@@ -159,32 +159,65 @@ export const LoginPage: React.FC = () => {
           {/* Quick Demo Test Buttons */}
           <div className="mt-6 pt-6 border-t border-slate-100">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2 text-center">
-              Quick Test Accounts
+              Instant 1-Click Test Access
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setRole('faculty');
                   setEmail('ramesh.faculty@university.edu');
                   setPassword('password123');
+                  setError(null);
+                  setLoading(true);
+                  try {
+                    const res = await login('ramesh.faculty@university.edu', 'password123', 'faculty');
+                    if (res.success) {
+                      navigate('/faculty/dashboard');
+                    } else {
+                      setError(res.error || 'Login failed');
+                    }
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
-                className="p-2 rounded-lg bg-indigo-50/60 hover:bg-indigo-100 text-indigo-700 font-medium text-left border border-indigo-100 transition-colors"
+                disabled={loading}
+                className="p-2.5 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 font-medium text-left border border-indigo-200/80 transition-all hover:shadow-xs disabled:opacity-50"
               >
-                <div className="font-bold">Faculty Demo</div>
-                <div className="text-[10px] text-indigo-500">Dr. Ramesh Kumar</div>
+                <div className="font-bold flex items-center justify-between">
+                  <span>Faculty Login</span>
+                  <span className="text-[10px] bg-indigo-200/60 px-1.5 py-0.5 rounded font-bold">1-Click</span>
+                </div>
+                <div className="text-[10px] text-indigo-600 mt-0.5">Dr. Ramesh Kumar</div>
               </button>
+
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setRole('admin');
                   setEmail('admin.portal@university.edu');
                   setPassword('password123');
+                  setError(null);
+                  setLoading(true);
+                  try {
+                    const res = await login('admin.portal@university.edu', 'password123', 'admin');
+                    if (res.success) {
+                      navigate('/admin/dashboard');
+                    } else {
+                      setError(res.error || 'Login failed');
+                    }
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
-                className="p-2 rounded-lg bg-purple-50/60 hover:bg-purple-100 text-purple-700 font-medium text-left border border-purple-100 transition-colors"
+                disabled={loading}
+                className="p-2.5 rounded-xl bg-purple-50/80 hover:bg-purple-100 text-purple-700 font-medium text-left border border-purple-200/80 transition-all hover:shadow-xs disabled:opacity-50"
               >
-                <div className="font-bold">Admin Demo</div>
-                <div className="text-[10px] text-purple-500">Dean Office</div>
+                <div className="font-bold flex items-center justify-between">
+                  <span>Admin Login</span>
+                  <span className="text-[10px] bg-purple-200/60 px-1.5 py-0.5 rounded font-bold">1-Click</span>
+                </div>
+                <div className="text-[10px] text-purple-600 mt-0.5">Dean Office</div>
               </button>
             </div>
           </div>

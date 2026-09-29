@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Default Supabase project credentials provided
-export const DEFAULT_SUPABASE_URL = 'https://vdztuolooipujdoshygg.supabase.co';
-export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkenR1b2xvb2lwdWpkb3NoeWdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2NDIwNTMsImV4cCI6MjEwNjIxODA1M30.xW-UYNkMby_OtsbYQyOp2hvJJCfpRA1OG7oUV4wi-u0';
+export const DEFAULT_SUPABASE_URL = 'https://dusvdwadmdivholhzmcu.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1c3Zkd2FkbWRpdmhvbGh6bWN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2NTU1OTQsImV4cCI6MjEwNjIzMTU5NH0.laWyFMreBpVmvBSEN1F_ixLFwSKLUqW7EzQ7HP9yiw8';
 
 // Retrieve credentials from environment variables, localStorage override, or default constants
 const getStoredConfig = () => {

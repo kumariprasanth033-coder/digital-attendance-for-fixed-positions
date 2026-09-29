@@ -16,12 +16,18 @@ import {
   RotateCcw,
   Sparkles,
   Calendar,
-  Clock
+  Clock,
+  Printer,
+  FileSpreadsheet,
+  Building,
+  User,
+  Check,
+  X
 } from 'lucide-react';
 
 export const TakeAttendancePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
@@ -29,16 +35,17 @@ export const TakeAttendancePage: React.FC = () => {
   const [filter, setFilter] = useState<AttendanceFilter>('all');
   const [loading, setLoading] = useState(true);
 
-  // Attendance state
+  // Attendance state: Default is 'Present' for all students
   const [marks, setMarks] = useState<Record<string, MarkState>>({});
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('09:00:00');
   const [notes, setNotes] = useState('');
 
-  // Confirmation & submit state
+  // Confirmation & report state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedSession, setSubmittedSession] = useState<AttendanceSession | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -55,7 +62,8 @@ export const TakeAttendancePage: React.FC = () => {
         const stList = await api.getStudentsByClassroom(id);
         setStudents(stList);
 
-        // Initialize all students as 'Present' by default (fastest classroom UX: just tap empty seats to mark absent!)
+        // Core Rule: All enrolled students are PRESENT by default!
+        // Faculty only taps to mark ABSENT!
         const initialMarks: Record<string, MarkState> = {};
         stList.forEach(s => {
           initialMarks[s.id] = 'Present';
@@ -75,14 +83,11 @@ export const TakeAttendancePage: React.FC = () => {
     init();
   }, [id]);
 
-  // Toggle cycling: Present -> Absent -> Unmarked -> Present
+  // Toggle rule: If Present -> Absent. If Absent -> Present.
   const handleToggleMark = (studentId: string) => {
     setMarks(prev => {
-      const current = prev[studentId] || 'Unmarked';
-      let next: MarkState = 'Present';
-      if (current === 'Present') next = 'Absent';
-      else if (current === 'Absent') next = 'Unmarked';
-      else next = 'Present';
+      const current = prev[studentId] || 'Present';
+      const next: MarkState = current === 'Present' ? 'Absent' : 'Present';
       return { ...prev, [studentId]: next };
     });
   };
@@ -103,22 +108,26 @@ export const TakeAttendancePage: React.FC = () => {
     setMarks(updated);
   };
 
-  const handleClearAll = () => {
-    const updated: Record<string, MarkState> = {};
-    students.forEach(s => {
-      updated[s.id] = 'Unmarked';
-    });
-    setMarks(updated);
+  const handleClearAllAbsents = () => {
+    handleMarkAllPresent();
   };
 
   // Live Statistics Calculations
   const totalEnrolled = students.length;
   const presentCount = Object.values(marks).filter(v => v === 'Present').length;
   const absentCount = Object.values(marks).filter(v => v === 'Absent').length;
-  const unmarkedCount = Object.values(marks).filter(v => v === 'Unmarked').length;
   const percentage = totalEnrolled > 0
     ? Math.round((presentCount / totalEnrolled) * 1000) / 10
-    : 0;
+    : 100;
+
+  // Boys vs Girls Breakdown
+  const boysStudents = students.filter(s => s.gender === 'Male');
+  const girlsStudents = students.filter(s => s.gender === 'Female');
+
+  const boysPresent = boysStudents.filter(s => (marks[s.id] || 'Present') === 'Present').length;
+  const boysAbsent = boysStudents.length - boysPresent;
+  const girlsPresent = girlsStudents.filter(s => (marks[s.id] || 'Present') === 'Present').length;
+  const girlsAbsent = girlsStudents.length - girlsPresent;
 
   const handleSubmitAttendance = async () => {
     if (!classroom || !user) return;
@@ -134,6 +143,7 @@ export const TakeAttendancePage: React.FC = () => {
       });
       setSubmittedSession(session);
       setShowConfirmModal(false);
+      setShowReportModal(true);
     } catch (err) {
       console.error('Attendance submission failed:', err);
       alert('Failed to submit attendance.');
@@ -143,19 +153,43 @@ export const TakeAttendancePage: React.FC = () => {
   };
 
   const downloadSessionCSV = () => {
-    if (!classroom || !submittedSession) return;
-    const filename = `${classroom.class_name.replace(/[^a-zA-Z0-9]/g, '_')}_Attendance_${sessionDate}`;
-    const headers = ['Roll Number', 'Student Name', 'Branch', 'Gender', 'Seat Number', 'Date', 'Status'];
-    const rows = students.map(s => [
+    if (!classroom) return;
+    const cleanClassName = classroom.class_name.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `${cleanClassName}_Attendance_Report_${sessionDate}`;
+
+    const headers = [
+      'S.No',
+      'Roll Number',
+      'Student Name',
+      'Branch',
+      'Gender',
+      'Wing',
+      'Row',
+      'Column',
+      'Seat Number',
+      'Attendance Date',
+      'Status'
+    ];
+
+    const rows = students.map((s, idx) => [
+      idx + 1,
       s.roll_number,
       s.student_name,
       s.branch,
       s.gender,
+      s.gender === 'Male' ? 'Boys Wing' : 'Girls Wing',
+      s.row_number,
+      s.column_number,
       s.position_number,
       sessionDate,
-      marks[s.id] || 'Present'
+      marks[s.id] === 'Absent' ? 'ABSENT' : 'PRESENT'
     ]);
+
     api.downloadCSV(filename, headers, rows);
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   if (loading || !classroom) {
@@ -165,7 +199,7 @@ export const TakeAttendancePage: React.FC = () => {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-xs text-slate-500">
             <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            Initializing roll-call session...
+            Initializing live auditorium roll-call session...
           </div>
         </div>
       </div>
@@ -183,144 +217,98 @@ export const TakeAttendancePage: React.FC = () => {
           <div className="space-y-1">
             <Link
               to={`/faculty/classrooms/${classroom.id}`}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-900 inline-flex items-center gap-1 transition-colors"
+              className="text-xs font-semibold text-slate-500 hover:text-indigo-600 inline-flex items-center gap-1.5 transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Seating Layout
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Seating Arrangement Window
             </Link>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-display">
-                Take Attendance
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 font-display">
+                Live Attendance Window
               </h1>
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-0.5 rounded-full">
                 {classroom.class_name}
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Fixed Position Roll-Call: Click any seat to mark absent or present.
+              Auditorium Roll-Call: Every enrolled student is <strong>PRESENT by default</strong>. Simply tap any empty seat to flag that student as <strong>ABSENT</strong>.
             </p>
           </div>
 
-          {!submittedSession && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleMarkAllPresent}
-                className="px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors flex items-center gap-1.5"
-              >
-                <CheckCheck className="w-3.5 h-3.5" /> Mark All Present
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="px-3 py-2 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(true)}
-                disabled={totalEnrolled === 0}
-                className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Save className="w-3.5 h-3.5" /> Submit Attendance
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleMarkAllPresent}
+              className="px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <CheckCheck className="w-3.5 h-3.5" /> Reset All to Present
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowConfirmModal(true)}
+              disabled={totalEnrolled === 0}
+              className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" /> Finalize & Submit Attendance
+            </button>
+          </div>
         </div>
 
-        {/* Live Statistics Bar */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs">
+        {/* Live Attendance Statistics Bar */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
             <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                 Total Enrolled
               </span>
-              <span className="text-2xl font-extrabold text-slate-900 font-mono tabular-nums">
+              <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
                 {totalEnrolled}
               </span>
               <span className="text-[10px] text-slate-400 block mt-0.5">Fixed Seats</span>
             </div>
 
             <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider block">
-                Present
+              <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
+                Present (Default)
               </span>
-              <span className="text-2xl font-extrabold text-emerald-600 font-mono tabular-nums">
+              <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums">
                 {presentCount}
               </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">In Attendance</span>
+              <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">In Seats</span>
             </div>
 
             <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-semibold text-rose-600 uppercase tracking-wider block">
-                Absent
+              <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">
+                Absent (Flagged)
               </span>
-              <span className="text-2xl font-extrabold text-rose-600 font-mono tabular-nums">
+              <span className="text-2xl font-black text-rose-600 font-mono tabular-nums">
                 {absentCount}
               </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Unexcused</span>
+              <span className="text-[10px] text-rose-500 font-medium block mt-0.5">Unexcused</span>
             </div>
 
             <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider block">
-                Unmarked
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">
+                Boys Wing
               </span>
-              <span className="text-2xl font-extrabold text-amber-600 font-mono tabular-nums">
-                {unmarkedCount}
+              <span className="text-lg font-black text-blue-700 font-mono tabular-nums">
+                {boysPresent} <span className="text-xs text-slate-400 font-normal">/ {boysStudents.length}</span>
               </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Pending Check</span>
+              <span className="text-[10px] text-blue-600 block mt-0.5">{boysAbsent} Absent</span>
             </div>
 
-            <div className="col-span-2 sm:col-span-1 pt-2 sm:pt-0 sm:px-3 text-center sm:text-left bg-indigo-50/50 sm:bg-transparent rounded-xl p-2 sm:p-0">
-              <span className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider block">
-                Live Rate
+            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+              <span className="text-[11px] font-bold text-pink-700 uppercase tracking-wider block">
+                Girls Wing
               </span>
-              <span className="text-2xl font-extrabold text-indigo-600 font-mono tabular-nums">
-                {percentage}%
+              <span className="text-lg font-black text-pink-700 font-mono tabular-nums">
+                {girlsPresent} <span className="text-xs text-slate-400 font-normal">/ {girlsStudents.length}</span>
               </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Turnout</span>
+              <span className="text-[10px] text-pink-600 block mt-0.5">{girlsAbsent} Absent</span>
             </div>
           </div>
         </div>
 
-        {/* Post-submission Success Banner */}
-        {submittedSession && (
-          <div className="bg-emerald-50 rounded-2xl border border-emerald-200 p-6 shadow-xs animate-in fade-in duration-200">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-emerald-950">
-                    Attendance Session Successfully Saved!
-                  </h3>
-                  <p className="text-xs text-emerald-800 mt-0.5">
-                    Session record stored in Supabase with {presentCount} Present, {absentCount} Absent ({percentage}%).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={downloadSessionCSV}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download Session CSV
-                </button>
-                <Link
-                  to="/faculty/attendance"
-                  className="px-4 py-2 text-xs font-semibold text-emerald-900 bg-white hover:bg-emerald-100 rounded-xl border border-emerald-200 transition-colors"
-                >
-                  View History
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Interactive Theatre Seating Matrix */}
+        {/* Live Seating Matrix in Attendance Mode */}
         <SeatingMatrix
           classroom={classroom}
           students={students}
@@ -335,7 +323,7 @@ export const TakeAttendancePage: React.FC = () => {
 
       </main>
 
-      {/* Confirmation Safety Modal */}
+      {/* Confirmation Safeguard Modal */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
@@ -343,50 +331,47 @@ export const TakeAttendancePage: React.FC = () => {
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Submit Classroom Attendance?
+              <h3 className="text-base font-bold text-slate-900 font-display">
+                Confirm & Submit Attendance?
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Please verify the final attendance breakdown for <strong className="text-slate-800">{classroom.class_name}</strong>:
+                Please verify the final roll-call breakdown for <strong className="text-slate-800">{classroom.class_name}</strong>:
               </p>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 font-mono">
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 font-mono">
               <div className="flex justify-between text-slate-600">
-                <span>Date:</span>
-                <span className="font-bold text-slate-900">{sessionDate}</span>
+                <span>Classroom Section:</span>
+                <span className="font-bold text-slate-900">{classroom.class_name}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Session Date:</span>
+                <span className="font-bold text-slate-900">{sessionDate} ({startTime})</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Total Enrolled:</span>
-                <span className="font-bold text-slate-900">{totalEnrolled}</span>
+                <span className="font-bold text-slate-900">{totalEnrolled} Students</span>
               </div>
               <div className="flex justify-between text-emerald-700">
-                <span>Present Count:</span>
+                <span>Total Present:</span>
                 <span className="font-bold">{presentCount}</span>
               </div>
               <div className="flex justify-between text-rose-700">
-                <span>Absent Count:</span>
+                <span>Total Absent:</span>
                 <span className="font-bold">{absentCount}</span>
               </div>
               <div className="flex justify-between text-indigo-700 font-bold border-t border-slate-200 pt-1.5">
-                <span>Attendance Rate:</span>
+                <span>Turnout Rate:</span>
                 <span>{percentage}%</span>
               </div>
             </div>
-
-            {unmarkedCount > 0 && (
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-                <span>Note: {unmarkedCount} student(s) remain unmarked and will be recorded as Present.</span>
-              </div>
-            )}
 
             <div className="pt-2 flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
                 disabled={submitting}
-                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
               >
                 Cancel
               </button>
@@ -394,14 +379,202 @@ export const TakeAttendancePage: React.FC = () => {
                 type="button"
                 onClick={handleSubmitAttendance}
                 disabled={submitting}
-                className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
-                {submitting ? 'Saving to Database...' : 'Confirm & Submit'}
+                {submitting ? 'Submitting...' : 'Confirm & Save Report'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* FINAL REPORT GENERATION MODAL / WINDOW */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full my-auto shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Action Bar (Top) */}
+            <div className="px-6 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  Official Attendance Roll-Call Report Generated
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-lg text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print Report
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadSessionCSV}
+                  className="px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Report Body */}
+            <div className="p-6 sm:p-8 overflow-y-auto flex-1 space-y-6" id="printable-report">
+              
+              {/* Institutional Header */}
+              <div className="text-center pb-5 border-b-2 border-slate-900 space-y-1">
+                <div className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Department of Computer Science & Engineering / Artificial Intelligence & Data Science
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight font-display">
+                  Digital Attendance System for Fixed Positions
+                </h2>
+                <div className="inline-block px-3 py-0.5 rounded-full bg-slate-100 text-slate-800 text-xs font-mono font-bold">
+                  OFFICIAL CLASSROOM ATTENDANCE ROLL-CALL RECORD
+                </div>
+              </div>
+
+              {/* Classroom Details Box */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Course Section</span>
+                    <span className="font-bold text-slate-900 text-sm">{classroom.class_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Faculty In-Charge</span>
+                    <span className="font-bold text-slate-900">{profile?.full_name || 'Dr. Ramesh Kumar'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Date & Time</span>
+                    <span className="font-bold text-slate-900 font-mono">{sessionDate} · {startTime}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Matrix Capacity</span>
+                    <span className="font-bold text-slate-900 font-mono">
+                      {classroom.rows}R × {classroom.columns}C ({classroom.total_positions || (classroom.rows * classroom.columns)} Seats)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3 pt-3 border-t border-slate-200">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Enrolled</span>
+                    <span className="font-bold text-slate-900 font-mono">{totalEnrolled} Students</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-emerald-600 uppercase block">Present</span>
+                    <span className="font-bold text-emerald-700 font-mono">{presentCount} Students</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-rose-600 uppercase block">Absent</span>
+                    <span className="font-bold text-rose-700 font-mono">{absentCount} Students</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-indigo-600 uppercase block">Turnout Rate</span>
+                    <span className="font-black text-indigo-700 font-mono text-sm">{percentage}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table Format Student Attendance */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+                  Student Roll-Call Register (Fixed Positions)
+                </h4>
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                        <th className="py-2.5 px-3">S.No</th>
+                        <th className="py-2.5 px-3">Seat #</th>
+                        <th className="py-2.5 px-3">Wing</th>
+                        <th className="py-2.5 px-3">Roll Number</th>
+                        <th className="py-2.5 px-3">Student Name</th>
+                        <th className="py-2.5 px-3">Branch</th>
+                        <th className="py-2.5 px-3">Gender</th>
+                        <th className="py-2.5 px-3 text-right">Attendance Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {students.map((st, idx) => {
+                        const isStudentAbsent = marks[st.id] === 'Absent';
+                        return (
+                          <tr key={st.id} className={isStudentAbsent ? 'bg-rose-50/40' : 'hover:bg-slate-50/50'}>
+                            <td className="py-2.5 px-3 font-mono text-slate-400">{idx + 1}</td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                              #{st.position_number} <span className="text-slate-400 font-normal">({st.row_number},{st.column_number})</span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                st.gender === 'Male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
+                              }`}>
+                                {st.gender === 'Male' ? 'Boys Wing' : 'Girls Wing'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{st.roll_number}</td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">{st.student_name}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{st.branch}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{st.gender}</td>
+                            <td className="py-2.5 px-3 text-right">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                isStudentAbsent
+                                  ? 'bg-rose-600 text-white'
+                                  : 'bg-emerald-600 text-white'
+                              }`}>
+                                {isStudentAbsent ? 'ABSENT' : 'PRESENT'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Institutional Sign-off Footer */}
+              <div className="pt-8 flex items-center justify-between text-xs text-slate-400 border-t border-slate-200">
+                <div>
+                  Generated on {new Date().toLocaleString()} · System Verified
+                </div>
+                <div className="text-right">
+                  <div className="h-8 border-b border-slate-300 w-40 ml-auto mb-1" />
+                  <span className="font-semibold text-slate-700">Faculty Signature</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Bottom Modal Actions */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <Link
+                to="/faculty/attendance"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors"
+              >
+                Go to Attendance History
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowReportModal(false)}
+                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
+              >
+                Close Report
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

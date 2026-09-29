@@ -1,6 +1,6 @@
 import React from 'react';
 import { Student, MarkState, AttendanceFilter } from '../../types';
-import { Check, X, User, Plus } from 'lucide-react';
+import { Check, X, User, Plus, Armchair } from 'lucide-react';
 
 interface SeatCardProps {
   row: number;
@@ -14,6 +14,7 @@ interface SeatCardProps {
   onSeatClick?: (row: number, col: number, student?: Student) => void;
   onMarkPresent?: (studentId: string) => void;
   onMarkAbsent?: (studentId: string) => void;
+  wing?: 'boys' | 'girls' | 'general';
 }
 
 export const SeatCard: React.FC<SeatCardProps> = ({
@@ -23,11 +24,12 @@ export const SeatCard: React.FC<SeatCardProps> = ({
   student,
   mode,
   filter = 'all',
-  markState = 'Unmarked',
+  markState = 'Present', // Default is Present unless explicitly marked Absent!
   onToggleMark,
   onSeatClick,
   onMarkPresent,
-  onMarkAbsent
+  onMarkAbsent,
+  wing
 }) => {
   // Check if filtered out
   const isFilteredOut = Boolean(
@@ -36,14 +38,26 @@ export const SeatCard: React.FC<SeatCardProps> = ({
      (filter === 'girls' && student.gender !== 'Female'))
   );
 
-  // If slot is empty
+  // If seat is vacant/empty
   if (!student) {
+    if (mode === 'attendance') {
+      // Clean, non-distracting vacant cinema chair during attendance roll call
+      return (
+        <div className="relative flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/60 bg-slate-50/50 min-h-[132px] select-none text-slate-300">
+          <Armchair className="w-5 h-5 text-slate-300 mb-1 opacity-70" />
+          <span className="text-[11px] font-medium text-slate-400">Vacant Seat</span>
+          <span className="text-[10px] font-mono text-slate-400">#{positionNumber} (R{row}:C{col})</span>
+        </div>
+      );
+    }
+
+    // In manage/view mode: Interactive slot to assign a student
     return (
       <div 
         onClick={() => onSeatClick && onSeatClick(row, col)}
-        className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed 
-          border-slate-300 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/40 
-          transition-all duration-150 min-h-[128px] cursor-pointer group select-none`}
+        className="relative flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed 
+          border-slate-300 hover:border-indigo-500 bg-slate-50/70 hover:bg-indigo-50/40 
+          transition-all duration-150 min-h-[132px] cursor-pointer group select-none shadow-2xs hover:shadow-xs"
         role="button"
         tabIndex={0}
         aria-label={`Empty Seat Row ${row}, Column ${col}, Position ${positionNumber}`}
@@ -54,55 +68,53 @@ export const SeatCard: React.FC<SeatCardProps> = ({
         <div className="w-8 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-100 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 transition-colors mb-1.5">
           <Plus className="w-4 h-4" />
         </div>
-        <span className="text-xs font-medium text-slate-500 group-hover:text-indigo-600">Assign Seat</span>
-        <span className="text-[10px] text-slate-400">R{row} · C{col}</span>
+        <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-600">Assign Student</span>
+        <span className="text-[10px] text-slate-400">Row {row} · Col {col}</span>
       </div>
     );
   }
 
-  // Visual styling based on attendance state
-  let attendanceBorder = 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
-  let badgeColor = 'bg-slate-100 text-slate-700';
+  // Attendance states: Default is Present. Only Absent when explicitly marked!
+  const isAbsent = markState === 'Absent';
+  const isPresent = !isAbsent;
 
+  let attendanceCardStyle = 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
   if (mode === 'attendance') {
-    if (markState === 'Present') {
-      attendanceBorder = 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-500/20 shadow-sm';
-      badgeColor = 'bg-emerald-600 text-white';
-    } else if (markState === 'Absent') {
-      attendanceBorder = 'border-rose-500 bg-rose-50/30 ring-2 ring-rose-500/20 shadow-sm';
-      badgeColor = 'bg-rose-600 text-white';
+    if (isAbsent) {
+      attendanceCardStyle = 'border-rose-500 bg-rose-50/40 ring-2 ring-rose-500/25 shadow-sm';
     } else {
-      attendanceBorder = 'border-amber-300 bg-amber-50/20 hover:border-amber-400';
-      badgeColor = 'bg-amber-100 text-amber-800';
+      attendanceCardStyle = 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-500/20 shadow-sm';
     }
   }
+
+  const wingColor = student.gender === 'Male' ? 'bg-blue-500' : 'bg-pink-500';
 
   return (
     <div
       onClick={() => {
-        if (mode === 'attendance' && onToggleMark) {
-          onToggleMark(student.id);
+        if (mode === 'attendance') {
+          if (onToggleMark) onToggleMark(student.id);
         } else if (onSeatClick) {
           onSeatClick(row, col, student);
         }
       }}
       className={`relative flex flex-col justify-between p-3.5 rounded-xl border transition-all duration-150 min-h-[136px] select-none text-left
-        ${attendanceBorder}
+        ${attendanceCardStyle}
         ${isFilteredOut ? 'opacity-25 grayscale-[60%] pointer-events-none' : 'cursor-pointer hover:-translate-y-0.5'}
       `}
       role="button"
       tabIndex={0}
-      aria-label={`Student ${student.student_name}, Seat ${positionNumber}, ${markState}`}
+      aria-label={`Student ${student.student_name}, Seat ${positionNumber}, ${isAbsent ? 'Absent' : 'Present'}`}
     >
-      {/* Theatre Seat Top Curved Rim Bar */}
-      <div className={`absolute top-0 left-3 right-3 h-1 rounded-b-md ${
+      {/* Curved Theatre Seat Headrest Trim */}
+      <div className={`absolute top-0 left-3 right-3 h-1.5 rounded-b-md ${
         mode === 'attendance'
-          ? markState === 'Present' ? 'bg-emerald-500' : markState === 'Absent' ? 'bg-rose-500' : 'bg-amber-400'
-          : student.gender === 'Male' ? 'bg-blue-400' : 'bg-pink-400'
+          ? isAbsent ? 'bg-rose-500' : 'bg-emerald-500'
+          : wingColor
       }`} />
 
-      {/* Header: Position Number & Gender / Attendance Tag */}
-      <div className="flex items-center justify-between gap-1 pt-0.5">
+      {/* Header: Seat Position & Status Badge */}
+      <div className="flex items-center justify-between gap-1 pt-1">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-mono font-bold text-slate-800 tabular-nums">
             #{positionNumber}
@@ -113,65 +125,64 @@ export const SeatCard: React.FC<SeatCardProps> = ({
         </div>
 
         {mode === 'attendance' ? (
-          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${badgeColor}`}>
-            {markState === 'Present' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-            {markState === 'Absent' && <X className="w-2.5 h-2.5 stroke-[3]" />}
-            {markState}
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+            isAbsent ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+          }`}>
+            {isAbsent ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
+            {isAbsent ? 'ABSENT' : 'PRESENT'}
           </span>
         ) : (
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-            student.gender === 'Male' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+            student.gender === 'Male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
           }`}>
-            {student.gender}
+            {student.gender === 'Male' ? 'Boys' : 'Girls'}
           </span>
         )}
       </div>
 
-      {/* Main Student Information: Name, Roll Number, Branch */}
+      {/* Student Details: Name, Roll Number, Branch */}
       <div className="my-1.5">
-        <h4 className="text-sm font-semibold text-slate-900 truncate leading-tight tracking-tight" title={student.student_name}>
+        <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate leading-snug tracking-tight" title={student.student_name}>
           {student.student_name}
         </h4>
-        <div className="text-xs font-mono font-medium text-slate-600 truncate mt-0.5 tabular-nums">
+        <div className="text-xs font-mono font-semibold text-slate-700 truncate mt-0.5 tabular-nums">
           {student.roll_number}
         </div>
-        <div className="text-[11px] text-slate-500 truncate">
-          {student.branch}
+        <div className="text-[11px] text-slate-500 truncate flex items-center justify-between mt-0.5">
+          <span>{student.branch}</span>
+          <span className="text-[10px] text-slate-400 font-mono">Seat #{positionNumber}</span>
         </div>
       </div>
 
-      {/* Footer Controls: Attendance Explicit Toggles or View info */}
+      {/* Attendance Mode Action: Only mark ABSENT or reset to PRESENT */}
       {mode === 'attendance' ? (
-        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1" onClick={e => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => onMarkPresent && onMarkPresent(student.id)}
-            className={`flex-1 py-1 px-1.5 rounded text-[11px] font-medium flex items-center justify-center gap-1 transition-colors ${
-              markState === 'Present'
-                ? 'bg-emerald-600 text-white font-semibold shadow-xs'
-                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-            }`}
-          >
-            <Check className="w-3 h-3" /> Present
-          </button>
-          <button
-            type="button"
-            onClick={() => onMarkAbsent && onMarkAbsent(student.id)}
-            className={`flex-1 py-1 px-1.5 rounded text-[11px] font-medium flex items-center justify-center gap-1 transition-colors ${
-              markState === 'Absent'
-                ? 'bg-rose-600 text-white font-semibold shadow-xs'
-                : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-            }`}
-          >
-            <X className="w-3 h-3" /> Absent
-          </button>
+        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          {isAbsent ? (
+            <button
+              type="button"
+              onClick={() => onMarkPresent && onMarkPresent(student.id)}
+              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1 transition-colors shadow-2xs"
+            >
+              <Check className="w-3.5 h-3.5" /> Re-mark as Present
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onMarkAbsent && onMarkAbsent(student.id)}
+              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-transparent flex items-center justify-center gap-1 transition-all"
+            >
+              <X className="w-3.5 h-3.5" /> Mark Absent
+            </button>
+          )}
         </div>
       ) : (
-        <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-          <span className="flex items-center gap-1">
-            <User className="w-3 h-3 text-slate-400" /> Fixed
+        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span className="flex items-center gap-1 font-mono text-[10px]">
+            <User className="w-3 h-3 text-slate-400" /> Fixed Seat
           </span>
-          <span className="hover:text-indigo-600 font-medium">Edit</span>
+          <span className="font-semibold text-indigo-600 hover:text-indigo-800">
+            Edit Details →
+          </span>
         </div>
       )}
     </div>

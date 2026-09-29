@@ -23,6 +23,11 @@ export interface Classroom {
   faculty_name?: string;
   latest_attendance?: string;
   attendance_percentage?: number;
+  layout_type?: 'dual_matrix' | 'single_matrix';
+  boys_rows?: number;
+  boys_columns?: number;
+  girls_rows?: number;
+  girls_columns?: number;
 }
 
 export type StudentGender = 'Male' | 'Female';
@@ -34,6 +39,7 @@ export interface Student {
   roll_number: string;
   branch: string;
   gender: StudentGender;
+  section_wing?: 'boys' | 'girls';
   row_number: number;
   column_number: number;
   position_number: number;

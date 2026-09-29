@@ -21,6 +21,7 @@ export const ClassroomsPage: React.FC = () => {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editTarget, setEditTarget] = useState<Classroom | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Classroom | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -41,12 +42,27 @@ export const ClassroomsPage: React.FC = () => {
     loadClassrooms();
   }, [user]);
 
-  const handleCreate = async (data: { class_name: string; rows: number; columns: number }) => {
+  const handleCreate = async (data: {
+    class_name: string;
+    rows: number;
+    columns: number;
+    layout_type?: 'dual_matrix' | 'single_matrix';
+    boys_rows?: number;
+    boys_columns?: number;
+    girls_rows?: number;
+    girls_columns?: number;
+  }) => {
     if (!user) return;
     await api.createClassroom({
       faculty_id: user.id,
       ...data
     });
+    await loadClassrooms();
+  };
+
+  const handleUpdate = async (id: string, updates: Partial<Classroom>) => {
+    await api.updateClassroom(id, updates);
+    setEditTarget(null);
     await loadClassrooms();
   };
 
@@ -123,13 +139,22 @@ export const ClassroomsPage: React.FC = () => {
                     <span className="text-xs font-mono font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
                       {c.rows} × {c.columns} = {c.total_positions} Seats
                     </span>
-                    <button
-                      onClick={() => setDeleteTarget(c)}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title="Delete Classroom"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditTarget(c)}
+                        className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        title="Edit Classroom Configuration"
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(c)}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Delete Classroom"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div>
@@ -185,6 +210,16 @@ export const ClassroomsPage: React.FC = () => {
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreate}
       />
+
+      {editTarget && (
+        <CreateClassroomModal
+          isOpen={Boolean(editTarget)}
+          onClose={() => setEditTarget(null)}
+          onCreate={async () => {}}
+          editClassroom={editTarget}
+          onUpdate={handleUpdate}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (

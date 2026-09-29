@@ -14,7 +14,7 @@ class Database {
 
     public function __construct() {
         // Read configuration from environment variables or .env
-        $this->host = getenv('DB_HOST') ?: 'db.vdztuolooipujdoshygg.supabase.co';
+        $this->host = getenv('DB_HOST') ?: 'db.dusvdwadmdivholhzmcu.supabase.co';
         $this->db_name = getenv('DB_NAME') ?: 'postgres';
         $this->username = getenv('DB_USER') ?: 'postgres';
         $this->password = getenv('DB_PASSWORD') ?: '';

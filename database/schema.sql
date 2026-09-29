@@ -81,6 +81,55 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
 );
 
 -- ====================================================================
+-- SAFE TABLE UPGRADES (In case tables already existed with fewer columns)
+-- ====================================================================
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'faculty';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS account_status TEXT DEFAULT 'active';
+
+ALTER TABLE public.classrooms ADD COLUMN IF NOT EXISTS faculty_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.classrooms ADD COLUMN IF NOT EXISTS class_name TEXT;
+ALTER TABLE public.classrooms ADD COLUMN IF NOT EXISTS rows INTEGER;
+ALTER TABLE public.classrooms ADD COLUMN IF NOT EXISTS columns INTEGER;
+
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS classroom_id UUID REFERENCES public.classrooms(id) ON DELETE CASCADE;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS student_name TEXT;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS roll_number TEXT;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS branch TEXT;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'Male';
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS row_number INTEGER;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS column_number INTEGER;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS position_number INTEGER;
+
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS classroom_id UUID REFERENCES public.classrooms(id) ON DELETE CASCADE;
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS faculty_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS attendance_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS start_time TIME DEFAULT CURRENT_TIME;
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS end_time TIME;
+ALTER TABLE public.attendance_sessions ADD COLUMN IF NOT EXISTS notes TEXT;
+
+ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES public.attendance_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS student_id UUID REFERENCES public.students(id) ON DELETE CASCADE;
+ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS marked_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_roll_per_classroom') THEN
+        ALTER TABLE public.students ADD CONSTRAINT unique_roll_per_classroom UNIQUE (classroom_id, roll_number);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_position_per_classroom') THEN
+        ALTER TABLE public.students ADD CONSTRAINT unique_position_per_classroom UNIQUE (classroom_id, row_number, column_number);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_student_per_session') THEN
+        ALTER TABLE public.attendance_records ADD CONSTRAINT unique_student_per_session UNIQUE (session_id, student_id);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
+
+-- ====================================================================
 -- PERFORMANCE INDEXES
 -- ====================================================================
 CREATE INDEX IF NOT EXISTS idx_classrooms_faculty_id ON public.classrooms(faculty_id);

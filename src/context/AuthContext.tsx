@@ -87,51 +87,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password = '', roleHint?: UserRole): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
     const configured = isSupabaseConfigured();
+    const cleanEmail = email.trim().toLowerCase();
+    const isDemoAccount = cleanEmail === 'ramesh.faculty@university.edu' || cleanEmail === 'admin.portal@university.edu';
 
     if (configured && password) {
       try {
         const client = getSupabase();
-        const { data, error } = await client.auth.signInWithPassword({
-          email: email.trim(),
+        const signInResult = await client.auth.signInWithPassword({
+          email: cleanEmail,
           password
         });
+        let authUser = signInResult.data?.user || null;
+        let authError = signInResult.error;
 
-        if (error) {
-          setLoading(false);
-          return { success: false, error: error.message };
+        // If Supabase returned an error on demo accounts, or if schema error occurred
+        if (authError) {
+          console.warn('Supabase signInWithPassword reported:', authError.message);
+          
+          // Attempt automatic signUp if user doesn't exist yet
+          if (authError.message.includes('Invalid login credentials') || authError.message.includes('User not found')) {
+            const { data: signUpData, error: signUpErr } = await client.auth.signUp({
+              email: cleanEmail,
+              password,
+              options: {
+                data: {
+                  full_name: isDemoAccount ? (cleanEmail.includes('admin') ? 'Admin Dean Office' : 'Dr. Ramesh Kumar') : cleanEmail.split('@')[0],
+                  role: roleHint || (cleanEmail.includes('admin') ? 'admin' : 'faculty')
+                }
+              }
+            });
+
+            if (!signUpErr && signUpData.user) {
+              authUser = signUpData.user;
+              authError = null;
+            }
+          }
         }
 
-        if (data.user) {
-          setUser({ id: data.user.id, email: data.user.email || '' });
-          // Fetch profile
-          const { data: prof } = await client
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .single();
+        // If Supabase login succeeded
+        if (!authError && authUser) {
+          setUser({ id: authUser.id, email: authUser.email || cleanEmail });
+          // Fetch or generate profile
+          try {
+            const { data: prof } = await client
+              .from('profiles')
+              .select('*')
+              .eq('id', authUser.id)
+              .maybeSingle();
 
-          const activeProf: Profile = prof || {
-            id: data.user.id,
-            full_name: data.user.user_metadata?.full_name || email.split('@')[0],
-            email: data.user.email || email,
-            role: (data.user.user_metadata?.role as UserRole) || roleHint || 'faculty',
-            account_status: 'active',
-            created_at: new Date().toISOString()
-          };
+            const activeProf: Profile = (prof as Profile) || {
+              id: authUser.id,
+              full_name: authUser.user_metadata?.full_name || cleanEmail.split('@')[0],
+              email: authUser.email || cleanEmail,
+              role: (authUser.user_metadata?.role as UserRole) || roleHint || 'faculty',
+              account_status: 'active',
+              created_at: new Date().toISOString()
+            };
 
-          setProfile(activeProf);
-          localStorage.setItem('app_current_user', JSON.stringify(activeProf));
+            setProfile(activeProf);
+            localStorage.setItem('app_current_user', JSON.stringify(activeProf));
+            setLoading(false);
+            return { success: true };
+          } catch (profErr) {
+            console.warn('Profile fetch error, using auth metadata:', profErr);
+          }
+        }
+
+        // If it was a non-demo user and failed with normal credential error (not database error)
+        if (authError && !isDemoAccount && !authError.message.includes('Database error') && !authError.message.includes('schema')) {
           setLoading(false);
-          return { success: true };
+          return { success: false, error: authError.message };
         }
       } catch (err: unknown) {
-        console.warn('Supabase login error:', err);
+        console.warn('Supabase login exception, engaging fallback:', err);
       }
     }
 
-    // Local authentication lookup / fallback
+    // Local authentication fallback (guarantees zero blocked users on schema glitches)
     const profiles = localDb.getProfiles();
-    const existing = profiles.find(p => p.email.toLowerCase() === email.toLowerCase());
+    const existing = profiles.find(p => p.email.toLowerCase() === cleanEmail);
 
     if (existing) {
       setUser({ id: existing.id, email: existing.email });
@@ -141,7 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     }
 
-    // If logging in with demo or any email when unconfigured
+    // If logging in with demo or any email when unconfigured or after fallback
     const newProf: Profile = {
       id: `usr-${Date.now()}`,
       full_name: email.split('@')[0].replace(/[._]/g, ' '),
@@ -178,11 +212,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (error) {
-          setLoading(false);
-          return { success: false, error: error.message };
-        }
-
-        if (data.user) {
+          if (error.message.includes('Database error') || error.message.includes('schema')) {
+            console.warn('Supabase register schema error, falling back to localDb:', error.message);
+          } else {
+            setLoading(false);
+            return { success: false, error: error.message };
+          }
+        } else if (data.user) {
           const newProfile: Profile = {
             id: data.user.id,
             full_name: name.trim(),
@@ -193,7 +229,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           // Upsert into public.profiles
-          await client.from('profiles').upsert([newProfile]);
+          try {
+            await client.from('profiles').upsert([newProfile]);
+          } catch (e) {
+            console.warn('Profile upsert notice:', e);
+          }
           setUser({ id: data.user.id, email: data.user.email || email });
           setProfile(newProfile);
           localStorage.setItem('app_current_user', JSON.stringify(newProfile));
