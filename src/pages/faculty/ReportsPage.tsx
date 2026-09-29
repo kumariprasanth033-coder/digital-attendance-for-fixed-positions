@@ -91,8 +91,7 @@ export const ReportsPage: React.FC = () => {
 
     const headers = [
       'S.No',
-      'Seat Number',
-      'Wing',
+      'Position',
       'Row',
       'Column',
       'Roll Number',
@@ -108,8 +107,7 @@ export const ReportsPage: React.FC = () => {
 
     const rows = filteredReports.map((r, idx) => [
       idx + 1,
-      r.position_number,
-      r.gender === 'Male' ? 'Boys Wing' : 'Girls Wing',
+      `R${r.row_number}-C${r.column_number}`,
       r.row_number,
       r.column_number,
       r.roll_number,
@@ -258,8 +256,7 @@ export const ReportsPage: React.FC = () => {
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px]">
                         <th className="py-3 px-4">S.No</th>
-                        <th className="py-3 px-4">Seat #</th>
-                        <th className="py-3 px-4">Wing</th>
+                        <th className="py-3 px-4">Position</th>
                         <th className="py-3 px-4">Roll Number</th>
                         <th className="py-3 px-4">Student Name</th>
                         <th className="py-3 px-4">Branch</th>
@@ -275,16 +272,11 @@ export const ReportsPage: React.FC = () => {
                         <tr key={r.student_id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="py-3 px-4 text-slate-400 tabular-nums">{idx + 1}</td>
                           <td className="py-3 px-4 font-bold text-slate-800 tabular-nums">
-                            #{r.position_number}
-                            <span className="text-[10px] text-slate-400 font-normal ml-1">
-                              (R{r.row_number}:C{r.column_number})
+                            <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 font-sans">
+                              R{r.row_number}-C{r.column_number}
                             </span>
-                          </td>
-                          <td className="py-3 px-4 font-sans">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              r.gender === 'Male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
-                            }`}>
-                              {r.gender === 'Male' ? 'Boys Wing' : 'Girls Wing'}
+                            <span className="text-[10px] text-slate-400 font-normal ml-1">
+                              #{r.position_number}
                             </span>
                           </td>
                           <td className="py-3 px-4 font-bold text-slate-900">
@@ -296,8 +288,12 @@ export const ReportsPage: React.FC = () => {
                           <td className="py-3 px-4 font-sans text-slate-600">
                             {r.branch}
                           </td>
-                          <td className="py-3 px-4 font-sans text-slate-600">
-                            {r.gender}
+                          <td className="py-3 px-4 font-sans">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              r.gender === 'Male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
+                            }`}>
+                              {r.gender === 'Male' ? 'Male' : 'Female'}
+                            </span>
                           </td>
                           <td className="py-3 px-4 text-right tabular-nums text-slate-600">
                             {r.total_sessions}

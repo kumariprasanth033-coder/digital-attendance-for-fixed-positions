@@ -188,7 +188,7 @@ export const ClassroomsPage: React.FC = () => {
                     to={`/faculty/classrooms/${c.id}`}
                     className="flex-1 py-2 px-3 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center justify-center gap-1"
                   >
-                    <LayoutGrid className="w-3.5 h-3.5" /> Seating Matrix
+                    <LayoutGrid className="w-3.5 h-3.5" /> Manage & View
                   </Link>
 
                   <Link

@@ -297,7 +297,7 @@ export const FacultyDashboard: React.FC = () => {
                       to={`/faculty/classrooms/${cls.id}`}
                       className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1"
                     >
-                      <LayoutGrid className="w-3.5 h-3.5" /> Seating Matrix
+                      <LayoutGrid className="w-3.5 h-3.5" /> Manage & View
                     </Link>
 
                     <Link

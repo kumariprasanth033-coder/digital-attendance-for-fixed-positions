@@ -1,6 +1,6 @@
 import React from 'react';
 import { Student, MarkState, AttendanceFilter } from '../../types';
-import { Check, X, User, Plus, Armchair } from 'lucide-react';
+import { Check, X, User, Plus, Edit2, Trash2 } from 'lucide-react';
 
 interface SeatCardProps {
   row: number;
@@ -12,9 +12,10 @@ interface SeatCardProps {
   markState?: MarkState;
   onToggleMark?: (studentId: string) => void;
   onSeatClick?: (row: number, col: number, student?: Student) => void;
+  onEdit?: (student: Student) => void;
+  onDelete?: (student: Student) => void;
   onMarkPresent?: (studentId: string) => void;
   onMarkAbsent?: (studentId: string) => void;
-  wing?: 'boys' | 'girls' | 'general';
 }
 
 export const SeatCard: React.FC<SeatCardProps> = ({
@@ -24,165 +25,245 @@ export const SeatCard: React.FC<SeatCardProps> = ({
   student,
   mode,
   filter = 'all',
-  markState = 'Present', // Default is Present unless explicitly marked Absent!
+  markState = 'Present',
   onToggleMark,
   onSeatClick,
+  onEdit,
+  onDelete,
   onMarkPresent,
   onMarkAbsent,
-  wing
 }) => {
-  // Check if filtered out
-  const isFilteredOut = Boolean(
-    student && 
-    ((filter === 'boys' && student.gender !== 'Male') || 
-     (filter === 'girls' && student.gender !== 'Female'))
-  );
+  const positionTag = `R${row}-C${col}`;
 
-  // If seat is vacant/empty
+  // --------------------------------------------------------------------------
+  // CASE 1: VACANT SEAT (No student assigned to this position)
+  // Preserves exact grid layout without rearrangement
+  // --------------------------------------------------------------------------
   if (!student) {
     if (mode === 'attendance') {
-      // Clean, non-distracting vacant cinema chair during attendance roll call
       return (
-        <div className="relative flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/60 bg-slate-50/50 min-h-[132px] select-none text-slate-300">
-          <Armchair className="w-5 h-5 text-slate-300 mb-1 opacity-70" />
-          <span className="text-[11px] font-medium text-slate-400">Vacant Seat</span>
-          <span className="text-[10px] font-mono text-slate-400">#{positionNumber} (R{row}:C{col})</span>
+        <div 
+          className="relative flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed border-slate-200/90 bg-slate-50/70 min-h-[155px] select-none text-center"
+          title={`Vacant Seat ${positionTag}`}
+        >
+          <div className="text-[10px] font-mono font-bold text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200 mb-1.5">
+            {positionTag}
+          </div>
+          <span className="text-xs font-bold text-slate-400">VACANT SEAT</span>
+          <span className="text-[10px] font-mono text-slate-400 mt-0.5">#{positionNumber}</span>
+          <span className="text-[9px] text-slate-400 mt-1">Unassigned</span>
         </div>
       );
     }
 
     // In manage/view mode: Interactive slot to assign a student
     return (
-      <div 
+      <button
+        type="button"
         onClick={() => onSeatClick && onSeatClick(row, col)}
-        className="relative flex flex-col items-center justify-center p-3 rounded-xl border-2 border-dashed 
-          border-slate-300 hover:border-indigo-500 bg-slate-50/70 hover:bg-indigo-50/40 
-          transition-all duration-150 min-h-[132px] cursor-pointer group select-none shadow-2xs hover:shadow-xs"
-        role="button"
-        tabIndex={0}
-        aria-label={`Empty Seat Row ${row}, Column ${col}, Position ${positionNumber}`}
+        className="w-full relative flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 border-dashed 
+          border-slate-300 hover:border-indigo-500 bg-slate-50/80 hover:bg-indigo-50/40 
+          transition-all duration-150 min-h-[155px] cursor-pointer group select-none shadow-2xs hover:shadow-xs text-left"
+        aria-label={`Vacant Seat ${positionTag} - Click to Assign`}
       >
-        <div className="absolute top-2 left-2 text-[10px] font-mono text-slate-400 font-medium">
-          #{positionNumber} <span className="text-slate-300">({row},{col})</span>
+        <div className="absolute top-2.5 left-2.5 text-[10px] font-mono text-slate-500 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+          {positionTag}
         </div>
-        <div className="w-8 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-100 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 transition-colors mb-1.5">
+        <div className="absolute top-2.5 right-2.5 text-[10px] font-mono text-slate-400">
+          #{positionNumber}
+        </div>
+
+        <div className="w-8 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-100 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 transition-colors mb-2">
           <Plus className="w-4 h-4" />
         </div>
-        <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-600">Assign Student</span>
-        <span className="text-[10px] text-slate-400">Row {row} · Col {col}</span>
-      </div>
+        <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700">
+          VACANT SEAT
+        </span>
+        <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50/80 group-hover:bg-indigo-100 px-2 py-0.5 rounded-full mt-1.5 transition-colors">
+          + Assign Student
+        </span>
+      </button>
     );
   }
 
-  // Attendance states: Default is Present. Only Absent when explicitly marked!
+  // --------------------------------------------------------------------------
+  // OCCUPIED SEAT: Student is assigned to this fixed coordinate
+  // --------------------------------------------------------------------------
+  const isMale = student.gender === 'Male';
+  const isFemale = student.gender === 'Female';
+
+  // Filter Focus States:
+  // When 'boys' is selected, Boys are highlighted and Girls are dimmed (but STILL 100% OPERATIONAL)
+  // When 'girls' is selected, Girls are highlighted and Boys are dimmed (but STILL 100% OPERATIONAL)
+  // When 'all' is selected, all seats are shown in standard full-color
+  const isMatchingFilter = 
+    filter === 'all' || 
+    (filter === 'boys' && isMale) || 
+    (filter === 'girls' && isFemale);
+
   const isAbsent = markState === 'Absent';
   const isPresent = !isAbsent;
 
-  let attendanceCardStyle = 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
+  // Determine card styling based on mode, filter, and attendance
+  let cardStyle = 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
+  let accentBarColor = isMale ? 'bg-blue-500' : 'bg-pink-500';
+
   if (mode === 'attendance') {
     if (isAbsent) {
-      attendanceCardStyle = 'border-rose-500 bg-rose-50/40 ring-2 ring-rose-500/25 shadow-sm';
+      cardStyle = 'border-rose-400 bg-rose-50/80 ring-2 ring-rose-500/30 shadow-xs';
+      accentBarColor = 'bg-rose-500';
     } else {
-      attendanceCardStyle = 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-500/20 shadow-sm';
+      cardStyle = 'border-emerald-400 bg-emerald-50/50 ring-2 ring-emerald-500/25 shadow-xs';
+      accentBarColor = 'bg-emerald-500';
+    }
+  } else {
+    // Manage / View mode
+    if (filter === 'boys') {
+      if (isMale) {
+        cardStyle = 'border-blue-300 bg-blue-50/30 ring-2 ring-blue-500/40 shadow-sm';
+      } else {
+        // Girl in Boys view: keep exactly in place, softly dimmed, all operations active
+        cardStyle = 'border-slate-200 bg-slate-50/80 opacity-55 hover:opacity-100 shadow-2xs';
+      }
+    } else if (filter === 'girls') {
+      if (isFemale) {
+        cardStyle = 'border-pink-300 bg-pink-50/30 ring-2 ring-pink-500/40 shadow-sm';
+      } else {
+        // Boy in Girls view: keep exactly in place, softly dimmed, all operations active
+        cardStyle = 'border-slate-200 bg-slate-50/80 opacity-55 hover:opacity-100 shadow-2xs';
+      }
     }
   }
 
-  const wingColor = student.gender === 'Male' ? 'bg-blue-500' : 'bg-pink-500';
+  const handleCardClick = () => {
+    if (mode === 'attendance') {
+      if (onToggleMark) onToggleMark(student.id);
+    } else {
+      if (onEdit) {
+        onEdit(student);
+      } else if (onSeatClick) {
+        onSeatClick(row, col, student);
+      }
+    }
+  };
+
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(student);
+    } else if (onSeatClick) {
+      onSeatClick(row, col, student);
+    }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(student);
+    }
+  };
 
   return (
     <div
-      onClick={() => {
-        if (mode === 'attendance') {
-          if (onToggleMark) onToggleMark(student.id);
-        } else if (onSeatClick) {
-          onSeatClick(row, col, student);
-        }
-      }}
-      className={`relative flex flex-col justify-between p-3.5 rounded-xl border transition-all duration-150 min-h-[136px] select-none text-left
-        ${attendanceCardStyle}
-        ${isFilteredOut ? 'opacity-25 grayscale-[60%] pointer-events-none' : 'cursor-pointer hover:-translate-y-0.5'}
-      `}
+      onClick={handleCardClick}
+      className={`relative flex flex-col justify-between p-3.5 rounded-2xl border transition-all duration-150 min-h-[155px] select-none text-left cursor-pointer hover:-translate-y-0.5 ${cardStyle}`}
       role="button"
       tabIndex={0}
-      aria-label={`Student ${student.student_name}, Seat ${positionNumber}, ${isAbsent ? 'Absent' : 'Present'}`}
+      aria-label={`Student ${student.student_name}, Seat ${positionTag}, ${isMale ? 'Boy' : 'Girl'}`}
     >
-      {/* Curved Theatre Seat Headrest Trim */}
-      <div className={`absolute top-0 left-3 right-3 h-1.5 rounded-b-md ${
-        mode === 'attendance'
-          ? isAbsent ? 'bg-rose-500' : 'bg-emerald-500'
-          : wingColor
-      }`} />
+      {/* Curved Theatre Headrest Accent */}
+      <div className={`absolute top-0 left-3 right-3 h-1.5 rounded-b-md ${accentBarColor}`} />
 
-      {/* Header: Seat Position & Status Badge */}
+      {/* Top Bar: Position Tag & Status/Gender Badge */}
       <div className="flex items-center justify-between gap-1 pt-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono font-bold text-slate-800 tabular-nums">
-            #{positionNumber}
-          </span>
-          <span className="text-[10px] text-slate-400 font-mono">
-            R{row}:C{col}
-          </span>
-        </div>
+        <span className="text-xs font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+          {positionTag}
+        </span>
 
         {mode === 'attendance' ? (
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
             isAbsent ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
           }`}>
             {isAbsent ? <X className="w-3 h-3 stroke-[3]" /> : <Check className="w-3 h-3 stroke-[3]" />}
             {isAbsent ? 'ABSENT' : 'PRESENT'}
           </span>
         ) : (
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-            student.gender === 'Male' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
+          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+            isMale 
+              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+              : 'bg-pink-100 text-pink-800 border border-pink-200'
           }`}>
-            {student.gender === 'Male' ? 'Boys' : 'Girls'}
+            <span className={`w-1.5 h-1.5 rounded-full ${isMale ? 'bg-blue-600' : 'bg-pink-600'}`} />
+            {isMale ? 'Boy' : 'Girl'}
+            {!isMatchingFilter && (
+              <span className="text-[9px] text-slate-500 font-normal">· Dimmed</span>
+            )}
           </span>
         )}
       </div>
 
       {/* Student Details: Name, Roll Number, Branch */}
       <div className="my-1.5">
-        <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate leading-snug tracking-tight" title={student.student_name}>
+        <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate leading-snug" title={student.student_name}>
           {student.student_name}
         </h4>
         <div className="text-xs font-mono font-semibold text-slate-700 truncate mt-0.5 tabular-nums">
           {student.roll_number}
         </div>
         <div className="text-[11px] text-slate-500 truncate flex items-center justify-between mt-0.5">
-          <span>{student.branch}</span>
-          <span className="text-[10px] text-slate-400 font-mono">Seat #{positionNumber}</span>
+          <span className="font-medium text-slate-600 truncate mr-1">{student.branch}</span>
+          <span className="text-[10px] text-slate-400 font-mono shrink-0">#{positionNumber}</span>
         </div>
       </div>
 
-      {/* Attendance Mode Action: Only mark ABSENT or reset to PRESENT */}
+      {/* Bottom Action Footer */}
       {mode === 'attendance' ? (
         <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
           {isAbsent ? (
             <button
               type="button"
-              onClick={() => onMarkPresent && onMarkPresent(student.id)}
-              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1 transition-colors shadow-2xs"
+              onClick={() => onMarkPresent ? onMarkPresent(student.id) : onToggleMark?.(student.id)}
+              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1 transition-colors shadow-2xs cursor-pointer"
             >
-              <Check className="w-3.5 h-3.5" /> Re-mark as Present
+              <Check className="w-3.5 h-3.5" /> Re-mark Present
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => onMarkAbsent && onMarkAbsent(student.id)}
-              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-transparent flex items-center justify-center gap-1 transition-all"
+              onClick={() => onMarkAbsent ? onMarkAbsent(student.id) : onToggleMark?.(student.id)}
+              className="w-full py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-transparent flex items-center justify-center gap-1 transition-all cursor-pointer"
             >
               <X className="w-3.5 h-3.5" /> Mark Absent
             </button>
           )}
         </div>
       ) : (
-        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="flex items-center gap-1 font-mono text-[10px]">
-            <User className="w-3 h-3 text-slate-400" /> Fixed Seat
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+            <User className="w-3 h-3 text-slate-400" /> Fixed
           </span>
-          <span className="font-semibold text-indigo-600 hover:text-indigo-800">
-            Edit Details →
-          </span>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleEditClick}
+              className="px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-1 transition-colors cursor-pointer"
+              title="Edit student details"
+            >
+              <Edit2 className="w-3 h-3" /> Edit
+            </button>
+
+            {onDelete && (
+              <button
+                type="button"
+                onClick={handleDeleteClick}
+                className="px-2 py-1 rounded-md text-[11px] font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-1 transition-colors cursor-pointer"
+                title="Remove student from seat"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

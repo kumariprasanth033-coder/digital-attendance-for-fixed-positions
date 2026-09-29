@@ -78,9 +78,9 @@ export const AttendanceHistoryPage: React.FC = () => {
 
   const handleDownloadSessionCSV = (session: AttendanceSession, records: AttendanceRecord[]) => {
     const filename = `${session.class_name?.replace(/[^a-zA-Z0-9]/g, '_')}_Attendance_${session.attendance_date}`;
-    const headers = ['Seat #', 'Row', 'Col', 'Roll Number', 'Student Name', 'Branch', 'Gender', 'Status', 'Marked At'];
+    const headers = ['Position', 'Row', 'Col', 'Roll Number', 'Student Name', 'Branch', 'Gender', 'Status', 'Marked At'];
     const rows = records.map(r => [
-      r.position_number || '',
+      `R${r.row_number}-C${r.column_number}`,
       r.row_number || '',
       r.column_number || '',
       r.roll_number || '',

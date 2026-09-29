@@ -473,9 +473,20 @@ export const api = {
           .from('students')
           .select('*')
           .eq('classroom_id', classroomId)
-          .order('position_number', { ascending: true });
-        if (!error && data && data.length > 0) {
-          return data as Student[];
+          .order('row_number', { ascending: true })
+          .order('column_number', { ascending: true });
+        
+        if (!error && Array.isArray(data)) {
+          // If Supabase returned rows, return them
+          if (data.length > 0) {
+            return data as Student[];
+          }
+          // If 0 rows in Supabase, check if this is the default demo classroom and seed exists in localDb
+          const localMatch = localDb.getStudents().filter(s => s.classroom_id === classroomId);
+          if (localMatch.length > 0) {
+            return localMatch;
+          }
+          return [];
         }
       } catch (err) {
         console.warn('Supabase getStudentsByClassroom error:', err);
@@ -490,10 +501,14 @@ export const api = {
       return students;
     }
 
-    // Default to full 16 students in AI & DS 4x4 matrix
-    return localDb.getStudents()
-      .filter(s => s.classroom_id === 'cls-aids-001')
-      .map(s => ({ ...s, classroom_id: classroomId }));
+    // If default demo classroom, provide the 16 demo students
+    if (classroomId === 'cls-aids-001' || classroomId === 'c0000000-0000-0000-0000-000000000001') {
+      return localDb.getStudents()
+        .filter(s => s.classroom_id === 'cls-aids-001')
+        .map(s => ({ ...s, classroom_id: classroomId }));
+    }
+
+    return [];
   },
 
   async getAllStudents(): Promise<Student[]> {
@@ -504,8 +519,9 @@ export const api = {
           .from('students')
           .select('*')
           .order('student_name', { ascending: true });
-        if (error) throw error;
-        return data as Student[];
+        if (!error && Array.isArray(data)) {
+          return data as Student[];
+        }
       } catch (err) {
         console.warn('Supabase getAllStudents error:', err);
       }
@@ -519,10 +535,10 @@ export const api = {
 
     // Prevent duplicate roll number in same classroom
     const duplicateRoll = existingStudents.find(
-      s => s.roll_number.toLowerCase() === student.roll_number.toLowerCase()
+      s => s.roll_number.trim().toLowerCase() === student.roll_number.trim().toLowerCase()
     );
     if (duplicateRoll) {
-      throw new Error(`Roll number "${student.roll_number}" is already assigned to ${duplicateRoll.student_name}.`);
+      throw new Error(`Roll number "${student.roll_number}" is already assigned to ${duplicateRoll.student_name} in this classroom.`);
     }
 
     // Prevent duplicate seat assignment
@@ -533,23 +549,49 @@ export const api = {
       throw new Error(`Seat (Row ${student.row_number}, Column ${student.column_number}) is already occupied by ${duplicateSeat.student_name}.`);
     }
 
+    const payload: Omit<Student, 'id' | 'created_at'> = {
+      classroom_id: student.classroom_id,
+      student_name: student.student_name.trim(),
+      roll_number: student.roll_number.trim().toUpperCase(),
+      branch: student.branch.trim(),
+      gender: student.gender,
+      row_number: student.row_number,
+      column_number: student.column_number,
+      position_number: student.position_number || ((student.row_number - 1) * 4 + student.column_number)
+    };
+
     if (isSupabaseConfigured()) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('students')
-          .insert([student])
+          .insert([payload])
           .select()
           .single();
-        if (error) throw error;
-        return data as Student;
-      } catch (err) {
-        console.warn('Supabase assignStudent error:', err);
+        if (error) {
+          console.error('Supabase assignStudent insert error:', error);
+          throw error;
+        }
+        if (data) {
+          // Keep localDb in sync
+          const current = localDb.getStudents();
+          localDb.setStudents([...current.filter(s => s.id !== data.id), data as Student]);
+          return data as Student;
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('unique_roll_per_classroom') || errMsg.includes('duplicate key')) {
+          throw new Error(`Roll number "${student.roll_number}" already exists in this classroom.`);
+        }
+        if (errMsg.includes('unique_seat_per_classroom')) {
+          throw new Error(`Position Row ${student.row_number}, Column ${student.column_number} is already occupied.`);
+        }
+        console.warn('Supabase assignStudent error, saving locally:', err);
       }
     }
 
     const newStudent: Student = {
-      ...student,
+      ...payload,
       id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       created_at: new Date().toISOString()
     };
@@ -560,6 +602,27 @@ export const api = {
   },
 
   async updateStudent(id: string, updates: Partial<Student>): Promise<Student> {
+    // If classroom_id, roll_number, or row/col changed, validate uniqueness
+    if (updates.classroom_id) {
+      const existing = await this.getStudentsByClassroom(updates.classroom_id);
+      if (updates.roll_number) {
+        const duplicateRoll = existing.find(
+          s => s.id !== id && s.roll_number.trim().toLowerCase() === updates.roll_number!.trim().toLowerCase()
+        );
+        if (duplicateRoll) {
+          throw new Error(`Roll number "${updates.roll_number}" is already used by ${duplicateRoll.student_name}.`);
+        }
+      }
+      if (updates.row_number !== undefined && updates.column_number !== undefined) {
+        const duplicateSeat = existing.find(
+          s => s.id !== id && s.row_number === updates.row_number && s.column_number === updates.column_number
+        );
+        if (duplicateSeat) {
+          throw new Error(`Seat Position Row ${updates.row_number}, Col ${updates.column_number} is already taken by ${duplicateSeat.student_name}.`);
+        }
+      }
+    }
+
     if (isSupabaseConfigured()) {
       try {
         const client = getSupabase();
@@ -570,8 +633,23 @@ export const api = {
           .select()
           .single();
         if (error) throw error;
-        return data as Student;
-      } catch (err) {
+        if (data) {
+          const current = localDb.getStudents();
+          const idx = current.findIndex(s => s.id === id);
+          if (idx !== -1) {
+            current[idx] = data as Student;
+            localDb.setStudents(current);
+          }
+          return data as Student;
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('unique_roll_per_classroom') || errMsg.includes('duplicate key')) {
+          throw new Error(`Roll number already exists in this classroom.`);
+        }
+        if (errMsg.includes('unique_seat_per_classroom')) {
+          throw new Error(`Seat Position is already occupied.`);
+        }
         console.warn('Supabase updateStudent error:', err);
       }
     }
@@ -591,7 +669,6 @@ export const api = {
         const client = getSupabase();
         const { error } = await client.from('students').delete().eq('id', id);
         if (error) throw error;
-        return true;
       } catch (err) {
         console.warn('Supabase removeStudent error:', err);
       }
