@@ -1,0 +1,6 @@
+{
+  "name": "Digital Attendance for Fixed Positions",
+  "description": "Smart, simple, and position-based classroom attendance management system featuring fixed seating matrices, boys/girls segregation, attendance tracking, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
