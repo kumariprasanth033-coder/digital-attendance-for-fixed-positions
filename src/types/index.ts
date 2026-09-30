@@ -10,6 +10,36 @@ export interface Profile {
   updated_at?: string;
 }
 
+export interface BranchSeatingConfig {
+  branch: string;
+  rows: number;
+  columns: number;
+  total_seats: number;
+  start_row?: number;
+  end_row?: number;
+  start_col?: number;
+  end_col?: number;
+}
+
+export interface GenderSeatingConfig {
+  arrangement: 'side_by_side' | 'front_to_back';
+  girls_placement: 'left' | 'right' | 'front' | 'back';
+  girls_rows: number;
+  girls_columns: number;
+  girls_total_seats: number;
+  boys_rows: number;
+  boys_columns: number;
+  boys_total_seats: number;
+  girls_start_row: number;
+  girls_end_row: number;
+  girls_start_col: number;
+  girls_end_col: number;
+  boys_start_row: number;
+  boys_end_row: number;
+  boys_start_col: number;
+  boys_end_col: number;
+}
+
 export interface Classroom {
   id: string;
   faculty_id: string;
@@ -21,13 +51,14 @@ export interface Classroom {
   updated_at?: string;
   student_count?: number;
   faculty_name?: string;
+  branch?: string;
+  branches?: string[];
+  branch_configs?: BranchSeatingConfig[];
+  seating_division_mode?: 'gender' | 'branch' | 'both' | 'unified';
+  gender_config?: GenderSeatingConfig;
+  enforce_seating_rule?: boolean; // Must and should follow rule
   latest_attendance?: string;
   attendance_percentage?: number;
-  layout_type?: 'dual_matrix' | 'single_matrix';
-  boys_rows?: number;
-  boys_columns?: number;
-  girls_rows?: number;
-  girls_columns?: number;
 }
 
 export type StudentGender = 'Male' | 'Female';

@@ -10,6 +10,8 @@ interface SeatCardProps {
   mode: 'view' | 'manage' | 'attendance';
   filter?: AttendanceFilter;
   markState?: MarkState;
+  zoneGender?: 'Male' | 'Female' | null;
+  enforceSeatingRule?: boolean;
   onToggleMark?: (studentId: string) => void;
   onSeatClick?: (row: number, col: number, student?: Student) => void;
   onEdit?: (student: Student) => void;
@@ -26,6 +28,8 @@ export const SeatCard: React.FC<SeatCardProps> = ({
   mode,
   filter = 'all',
   markState = 'Present',
+  zoneGender,
+  enforceSeatingRule,
   onToggleMark,
   onSeatClick,
   onEdit,
@@ -40,16 +44,27 @@ export const SeatCard: React.FC<SeatCardProps> = ({
   // Preserves exact grid layout without rearrangement
   // --------------------------------------------------------------------------
   if (!student) {
+    const isGirlZone = zoneGender === 'Female';
+    const isBoyZone = zoneGender === 'Male';
+
     if (mode === 'attendance') {
       return (
         <div 
-          className="relative flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed border-slate-200/90 bg-slate-50/70 min-h-[155px] select-none text-center"
-          title={`Vacant Seat ${positionTag}`}
+          className={`relative flex flex-col items-center justify-center p-3 rounded-2xl border-2 border-dashed min-h-[155px] select-none text-center ${
+            isGirlZone
+              ? 'border-pink-200/90 bg-pink-50/40 text-pink-700'
+              : isBoyZone
+              ? 'border-blue-200/90 bg-blue-50/40 text-blue-700'
+              : 'border-slate-200/90 bg-slate-50/70 text-slate-400'
+          }`}
+          title={`Vacant ${isGirlZone ? 'Girls' : isBoyZone ? 'Boys' : ''} Seat ${positionTag}`}
         >
           <div className="text-[10px] font-mono font-bold text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200 mb-1.5">
             {positionTag}
           </div>
-          <span className="text-xs font-bold text-slate-400">VACANT SEAT</span>
+          <span className="text-xs font-bold">
+            {isGirlZone ? '👩 GIRLS VACANT' : isBoyZone ? '👨 BOYS VACANT' : 'VACANT SEAT'}
+          </span>
           <span className="text-[10px] font-mono text-slate-400 mt-0.5">#{positionNumber}</span>
           <span className="text-[9px] text-slate-400 mt-1">Unassigned</span>
         </div>
@@ -61,9 +76,14 @@ export const SeatCard: React.FC<SeatCardProps> = ({
       <button
         type="button"
         onClick={() => onSeatClick && onSeatClick(row, col)}
-        className="w-full relative flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 border-dashed 
-          border-slate-300 hover:border-indigo-500 bg-slate-50/80 hover:bg-indigo-50/40 
-          transition-all duration-150 min-h-[155px] cursor-pointer group select-none shadow-2xs hover:shadow-xs text-left"
+        className={`w-full relative flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 border-dashed 
+          transition-all duration-150 min-h-[155px] cursor-pointer group select-none shadow-2xs hover:shadow-xs text-left ${
+            isGirlZone
+              ? 'border-pink-300 hover:border-pink-500 bg-pink-50/30 hover:bg-pink-50/70'
+              : isBoyZone
+              ? 'border-blue-300 hover:border-blue-500 bg-blue-50/30 hover:bg-blue-50/70'
+              : 'border-slate-300 hover:border-indigo-500 bg-slate-50/80 hover:bg-indigo-50/40'
+          }`}
         aria-label={`Vacant Seat ${positionTag} - Click to Assign`}
       >
         <div className="absolute top-2.5 left-2.5 text-[10px] font-mono text-slate-500 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
@@ -73,14 +93,32 @@ export const SeatCard: React.FC<SeatCardProps> = ({
           #{positionNumber}
         </div>
 
-        <div className="w-8 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-100 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 transition-colors mb-2">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors mb-2 ${
+          isGirlZone
+            ? 'bg-pink-100 group-hover:bg-pink-200 text-pink-600'
+            : isBoyZone
+            ? 'bg-blue-100 group-hover:bg-blue-200 text-blue-600'
+            : 'bg-slate-200 group-hover:bg-indigo-100 text-slate-500 group-hover:text-indigo-600'
+        }`}>
           <Plus className="w-4 h-4" />
         </div>
-        <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700">
-          VACANT SEAT
+        <span className={`text-xs font-bold ${
+          isGirlZone 
+            ? 'text-pink-800 group-hover:text-pink-900' 
+            : isBoyZone 
+            ? 'text-blue-800 group-hover:text-blue-900' 
+            : 'text-slate-700 group-hover:text-indigo-700'
+        }`}>
+          {isGirlZone ? '👩 GIRLS SEAT' : isBoyZone ? '👨 BOYS SEAT' : 'VACANT SEAT'}
         </span>
-        <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50/80 group-hover:bg-indigo-100 px-2 py-0.5 rounded-full mt-1.5 transition-colors">
-          + Assign Student
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1.5 transition-colors ${
+          isGirlZone
+            ? 'text-pink-700 bg-pink-100 group-hover:bg-pink-200'
+            : isBoyZone
+            ? 'text-blue-700 bg-blue-100 group-hover:bg-blue-200'
+            : 'text-indigo-600 bg-indigo-50/80 group-hover:bg-indigo-100'
+        }`}>
+          {isGirlZone ? '+ Assign Girl' : isBoyZone ? '+ Assign Boy' : '+ Assign Student'}
         </span>
       </button>
     );
@@ -201,6 +239,12 @@ export const SeatCard: React.FC<SeatCardProps> = ({
         <div className="text-xs font-mono font-semibold text-slate-700 truncate mt-0.5 tabular-nums">
           {student.roll_number}
         </div>
+        {zoneGender && student.gender !== zoneGender && (
+          <div className="mt-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-300 text-amber-900 text-[9px] font-bold flex items-center justify-between">
+            <span>⚠️ {student.gender === 'Male' ? 'Boy in Girls Zone' : 'Girl in Boys Zone'}</span>
+            {enforceSeatingRule && <span className="text-[8px] bg-amber-200 text-amber-900 px-1 rounded uppercase font-mono">Rule Violation</span>}
+          </div>
+        )}
         <div className="text-[11px] text-slate-500 truncate flex items-center justify-between mt-0.5">
           <div className="flex items-center gap-1.5 truncate">
             <span className="font-medium text-slate-600 truncate">{student.branch}</span>

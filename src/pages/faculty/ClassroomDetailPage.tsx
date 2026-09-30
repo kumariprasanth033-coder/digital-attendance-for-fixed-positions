@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Classroom, Student, AttendanceFilter } from '../../types';
 import { Navbar } from '../../components/common/Navbar';
@@ -31,6 +31,8 @@ import {
 export const ClassroomDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const actionProcessedRef = useRef(false);
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -83,6 +85,20 @@ export const ClassroomDetailPage: React.FC = () => {
       setClassroom(cls);
       const stList = await api.getStudentsByClassroom(id);
       setStudents(stList);
+
+      if (!actionProcessedRef.current) {
+        actionProcessedRef.current = true;
+        const action = searchParams.get('action');
+        if (action === 'assign_student') {
+          // Immediately open Assign Student to Seat modal (the exact modal requested)
+          setSelectedStudent(null);
+          setTargetRow(1);
+          setTargetCol(1);
+          setStudentModalOpen(true);
+        } else if (action === 'bulk_import') {
+          setBulkImportOpen(true);
+        }
+      }
     } catch (err) {
       console.error('Failed to load classroom detail:', err);
     } finally {
@@ -268,6 +284,47 @@ export const ClassroomDetailPage: React.FC = () => {
           </Link>
         </div>
 
+        {/* Empty Classroom Onboarding Banner */}
+        {students.length === 0 && (
+          <div className="p-6 rounded-3xl bg-linear-to-r from-indigo-50 via-blue-50 to-indigo-50 border border-indigo-200/80 shadow-xs space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Armchair className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 font-display">
+                    Classroom Ready with {totalPositions} Fixed Seats!
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Assign students to fixed cinema positions. Choose how you'd like to populate seats:
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleOpenAddStudent}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Assign Student to Seat</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkImportOpen(true)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-900 bg-white hover:bg-indigo-100 border border-indigo-300 transition-colors shadow-2xs flex items-center gap-2 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-indigo-600" />
+                  <span>Upload CSV / Excel</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* CLASSROOM OVERVIEW CARD */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-xs space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
@@ -279,6 +336,50 @@ export const ClassroomDetailPage: React.FC = () => {
                 <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full">
                   {classroom.rows} Rows × {classroom.columns} Columns
                 </span>
+                {(() => {
+                  const list = classroom.branches && classroom.branches.length > 0
+                    ? classroom.branches
+                    : classroom.branch
+                    ? classroom.branch.split(/[+,/]/).map(s => s.trim()).filter(Boolean)
+                    : [];
+                  if (list.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {list.map((br, idx) => (
+                        <span
+                          key={idx}
+                          className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200"
+                        >
+                          {br}
+                        </span>
+                      ))}
+                      {list.length > 1 && (
+                        <span className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                          Combined Classroom ({list.length} Streams)
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Girls & Boys Seating Division Badges */}
+                {classroom.gender_config && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-bold text-pink-800 bg-pink-100 border border-pink-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-pink-600" />
+                      👩 Girls: {classroom.gender_config.girls_rows}×{classroom.gender_config.girls_columns} ({classroom.gender_config.girls_total_seats} seats)
+                    </span>
+                    <span className="text-xs font-bold text-blue-800 bg-blue-100 border border-blue-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      👨 Boys: {classroom.gender_config.boys_rows}×{classroom.gender_config.boys_columns} ({classroom.gender_config.boys_total_seats} seats)
+                    </span>
+                    {classroom.enforce_seating_rule !== false && (
+                      <span className="text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full shadow-2xs">
+                        🛡️ Rule: Must & Should Follow
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-1.5">
                 Cinema seating architecture for fixed student positions. Manage students, take live attendance, or view seating.
@@ -674,7 +775,28 @@ export const ClassroomDetailPage: React.FC = () => {
           classroom={classroom}
           targetRow={targetRow}
           targetCol={targetCol}
-          defaultGender={genderFilter === 'girls' ? 'Female' : 'Male'}
+          defaultGender={(() => {
+            if (classroom?.gender_config && targetRow && targetCol) {
+              const gc = classroom.gender_config;
+              if (
+                targetRow >= gc.girls_start_row &&
+                targetRow <= gc.girls_end_row &&
+                targetCol >= gc.girls_start_col &&
+                targetCol <= gc.girls_end_col
+              ) {
+                return 'Female';
+              }
+              if (
+                targetRow >= gc.boys_start_row &&
+                targetRow <= gc.boys_end_row &&
+                targetCol >= gc.boys_start_col &&
+                targetCol <= gc.boys_end_col
+              ) {
+                return 'Male';
+              }
+            }
+            return genderFilter === 'girls' ? 'Female' : 'Male';
+          })()}
           existingStudent={selectedStudent}
           existingStudents={students}
         />

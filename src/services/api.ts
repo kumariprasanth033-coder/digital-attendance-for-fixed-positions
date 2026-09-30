@@ -41,6 +41,28 @@ const SEED_CLASSROOMS: Classroom[] = [
     rows: 4,
     columns: 4,
     total_positions: 16,
+    branch: 'AI & DS',
+    branches: ['AI & DS'],
+    seating_division_mode: 'gender',
+    enforce_seating_rule: true,
+    gender_config: {
+      arrangement: 'side_by_side',
+      girls_placement: 'right',
+      girls_rows: 4,
+      girls_columns: 2,
+      girls_total_seats: 8,
+      boys_rows: 4,
+      boys_columns: 2,
+      boys_total_seats: 8,
+      girls_start_row: 1,
+      girls_end_row: 4,
+      girls_start_col: 3,
+      girls_end_col: 4,
+      boys_start_row: 1,
+      boys_end_row: 4,
+      boys_start_col: 1,
+      boys_end_col: 2,
+    },
     created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
     faculty_name: 'Dr. Ramesh Kumar'
   },
@@ -51,6 +73,28 @@ const SEED_CLASSROOMS: Classroom[] = [
     rows: 3,
     columns: 4,
     total_positions: 12,
+    branch: 'CSE',
+    branches: ['CSE'],
+    seating_division_mode: 'gender',
+    enforce_seating_rule: true,
+    gender_config: {
+      arrangement: 'side_by_side',
+      girls_placement: 'right',
+      girls_rows: 3,
+      girls_columns: 2,
+      girls_total_seats: 6,
+      boys_rows: 3,
+      boys_columns: 2,
+      boys_total_seats: 6,
+      girls_start_row: 1,
+      girls_end_row: 3,
+      girls_start_col: 3,
+      girls_end_col: 4,
+      boys_start_row: 1,
+      boys_end_row: 3,
+      boys_start_col: 1,
+      boys_end_col: 2,
+    },
     created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
     faculty_name: 'Dr. Ramesh Kumar'
   }
@@ -339,38 +383,41 @@ export const api = {
     class_name: string; 
     rows: number; 
     columns: number;
-    layout_type?: 'dual_matrix' | 'single_matrix';
-    boys_rows?: number;
-    boys_columns?: number;
-    girls_rows?: number;
-    girls_columns?: number;
+    branch?: string;
+    branches?: string[];
+    branch_configs?: import('../types').BranchSeatingConfig[];
+    seating_division_mode?: 'gender' | 'branch' | 'both' | 'unified';
+    gender_config?: import('../types').GenderSeatingConfig;
+    enforce_seating_rule?: boolean;
   }): Promise<Classroom> {
-    const total_positions = payload.layout_type === 'dual_matrix' && payload.boys_rows && payload.boys_columns && payload.girls_rows && payload.girls_columns
-      ? (payload.boys_rows * payload.boys_columns) + (payload.girls_rows * payload.girls_columns)
-      : payload.rows * payload.columns;
+    const total_positions = payload.rows * payload.columns;
+
+    const computedBranch = payload.branch || (payload.branches && payload.branches.length > 0 ? payload.branches.join(' + ') : undefined);
 
     if (isSupabaseConfigured()) {
       try {
         const client = getSupabase();
+        const insertPayload: Record<string, unknown> = {
+          faculty_id: payload.faculty_id,
+          class_name: payload.class_name.trim(),
+          rows: payload.rows,
+          columns: payload.columns
+        };
         const { data, error } = await client
           .from('classrooms')
-          .insert([{
-            faculty_id: payload.faculty_id,
-            class_name: payload.class_name.trim(),
-            rows: payload.rows,
-            columns: payload.columns
-          }])
+          .insert([insertPayload])
           .select()
           .single();
         if (!error && data) {
-          await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns})`);
+          await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns}${computedBranch ? `, Branches: ${computedBranch}` : ''})`);
           return {
             ...data,
-            layout_type: payload.layout_type,
-            boys_rows: payload.boys_rows,
-            boys_columns: payload.boys_columns,
-            girls_rows: payload.girls_rows,
-            girls_columns: payload.girls_columns,
+            branch: computedBranch,
+            branches: payload.branches,
+            branch_configs: payload.branch_configs,
+            seating_division_mode: payload.seating_division_mode,
+            gender_config: payload.gender_config,
+            enforce_seating_rule: payload.enforce_seating_rule,
             total_positions
           } as Classroom;
         }
@@ -386,18 +433,19 @@ export const api = {
       rows: payload.rows,
       columns: payload.columns,
       total_positions,
-      layout_type: payload.layout_type,
-      boys_rows: payload.boys_rows,
-      boys_columns: payload.boys_columns,
-      girls_rows: payload.girls_rows,
-      girls_columns: payload.girls_columns,
+      branch: computedBranch,
+      branches: payload.branches,
+      branch_configs: payload.branch_configs,
+      seating_division_mode: payload.seating_division_mode,
+      gender_config: payload.gender_config,
+      enforce_seating_rule: payload.enforce_seating_rule,
       created_at: new Date().toISOString(),
       student_count: 0
     };
 
     const current = localDb.getClassrooms();
     localDb.setClassrooms([newClassroom, ...current]);
-    await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns})`);
+    await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns}${computedBranch ? `, Branches: ${computedBranch}` : ''})`);
     return newClassroom;
   },
 

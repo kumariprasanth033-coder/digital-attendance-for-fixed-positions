@@ -22,8 +22,10 @@ import {
   Building,
   User,
   Check,
-  X
+  X,
+  Upload
 } from 'lucide-react';
+import { BulkImportModal } from '../../components/classroom/BulkImportModal';
 
 export const TakeAttendancePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -43,10 +45,32 @@ export const TakeAttendancePage: React.FC = () => {
 
   // Confirmation & report state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedSession, setSubmittedSession] = useState<AttendanceSession | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+
+  const handleImportComplete = async () => {
+    if (!id) return;
+    try {
+      const cls = await api.getClassroomById(id);
+      if (cls) setClassroom(cls);
+      const stList = await api.getStudentsByClassroom(id);
+      setStudents(stList);
+      setMarks(prev => {
+        const updated = { ...prev };
+        stList.forEach(s => {
+          if (!updated[s.id]) {
+            updated[s.id] = 'Present';
+          }
+        });
+        return updated;
+      });
+    } catch (err) {
+      console.error('Failed to refresh after import:', err);
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -280,6 +304,13 @@ export const TakeAttendancePage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBulkImportOpen(true)}
+              className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 text-indigo-600" /> Upload CSV / Excel
+            </button>
             <button
               type="button"
               onClick={handleMarkAllPresent}
@@ -780,6 +811,22 @@ export const TakeAttendancePage: React.FC = () => {
 
           </div>
         </div>
+      )}
+
+      {/* Bulk Import Modal */}
+      {classroom && (
+        <BulkImportModal
+          isOpen={bulkImportOpen}
+          onClose={() => setBulkImportOpen(false)}
+          classroom={classroom}
+          existingStudents={students}
+          onImportComplete={handleImportComplete}
+          onExpandClassroom={async (newRows, newCols) => {
+            await api.updateClassroom(classroom.id, { rows: newRows, columns: newCols, total_positions: newRows * newCols });
+            const updated = await api.getClassroomById(classroom.id);
+            if (updated) setClassroom(updated);
+          }}
+        />
       )}
 
     </div>

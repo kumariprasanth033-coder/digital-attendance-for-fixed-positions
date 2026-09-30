@@ -1,7 +1,7 @@
 import React from 'react';
 import { Classroom, Student, AttendanceFilter, MarkState } from '../../types';
 import { SeatCard } from './SeatCard';
-import { Monitor, Sparkles, UserCheck, Plus, Users } from 'lucide-react';
+import { Monitor, Sparkles, UserCheck, Plus, Users, ShieldCheck } from 'lucide-react';
 
 interface SeatingMatrixProps {
   classroom: Classroom;
@@ -82,6 +82,28 @@ export const SeatingMatrix: React.FC<SeatingMatrixProps> = ({
     if (categoryRows.length === 0) return 1;
     return Math.max(1, ...categoryRows.map(cr => cr.students.length));
   }, [categoryRows]);
+
+  const getSeatZone = React.useCallback((r: number, c: number): 'Female' | 'Male' | null => {
+    const gc = classroom.gender_config;
+    if (!gc) return null;
+    if (
+      r >= gc.girls_start_row &&
+      r <= gc.girls_end_row &&
+      c >= gc.girls_start_col &&
+      c <= gc.girls_end_col
+    ) {
+      return 'Female';
+    }
+    if (
+      r >= gc.boys_start_row &&
+      r <= gc.boys_end_row &&
+      c >= gc.boys_start_col &&
+      c <= gc.boys_end_col
+    ) {
+      return 'Male';
+    }
+    return null;
+  }, [classroom.gender_config]);
 
   return (
     <div className="w-full bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-7 shadow-xs space-y-6">
@@ -168,6 +190,37 @@ export const SeatingMatrix: React.FC<SeatingMatrixProps> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Gender Division & Policy Banner */}
+      {classroom.gender_config && (
+        <div className="p-4 rounded-2xl bg-linear-to-r from-pink-50/70 via-slate-50 to-blue-50/70 border border-slate-200/90 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-white/90 px-3 py-1.5 rounded-xl border border-pink-200 shadow-2xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />
+              <span className="font-bold text-pink-900">
+                👩 Girls Section: {classroom.gender_config.girls_rows} Rows × {classroom.gender_config.girls_columns} Cols ({classroom.gender_config.girls_total_seats} Seats)
+              </span>
+            </div>
+            <div className="flex items-center gap-2 bg-white/90 px-3 py-1.5 rounded-xl border border-blue-200 shadow-2xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              <span className="font-bold text-blue-900">
+                👨 Boys Section: {classroom.gender_config.boys_rows} Rows × {classroom.gender_config.boys_columns} Cols ({classroom.gender_config.boys_total_seats} Seats)
+              </span>
+            </div>
+          </div>
+
+          {classroom.enforce_seating_rule !== false ? (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs shadow-2xs self-start md:self-auto">
+              <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>Seating Policy: Must and Should Follow (Enforced)</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-medium self-start md:self-auto">
+              <span>Seating Policy: Recommended Division</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -283,6 +336,51 @@ export const SeatingMatrix: React.FC<SeatingMatrixProps> = ({
             className="space-y-4"
             style={{ minWidth: `${Math.max(620, cols * 170)}px` }}
           >
+            {/* Column Zone Headers for Girls & Boys Section */}
+            {classroom.gender_config && classroom.gender_config.arrangement === 'side_by_side' && !isCategoryView && (
+              <div className="flex items-center gap-3 pb-1">
+                <div className="w-10 sm:w-12 shrink-0" />
+                <div 
+                  className="flex-1 grid gap-3"
+                  style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                >
+                  {(() => {
+                    const gc = classroom.gender_config!;
+                    const girlsSpan = Math.max(1, gc.girls_end_col - gc.girls_start_col + 1);
+                    const boysSpan = Math.max(1, gc.boys_end_col - gc.boys_start_col + 1);
+                    const girlsFirst = gc.girls_start_col < gc.boys_start_col;
+
+                    const girlsHeader = (
+                      <div 
+                        key="girls-header"
+                        className="py-1.5 px-3 rounded-xl bg-pink-100/90 border border-pink-300 text-pink-900 text-xs font-bold text-center flex items-center justify-center gap-2 shadow-2xs"
+                        style={{ gridColumn: `span ${girlsSpan} / span ${girlsSpan}` }}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-pink-500" />
+                        <span>👩 GIRLS SECTION</span>
+                        <span className="text-[10px] font-mono text-pink-700 font-semibold">(Cols {gc.girls_start_col}–{gc.girls_end_col} · {gc.girls_total_seats} Seats)</span>
+                      </div>
+                    );
+
+                    const boysHeader = (
+                      <div 
+                        key="boys-header"
+                        className="py-1.5 px-3 rounded-xl bg-blue-100/90 border border-blue-300 text-blue-900 text-xs font-bold text-center flex items-center justify-center gap-2 shadow-2xs"
+                        style={{ gridColumn: `span ${boysSpan} / span ${boysSpan}` }}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span>👨 BOYS SECTION</span>
+                        <span className="text-[10px] font-mono text-blue-700 font-semibold">(Cols {gc.boys_start_col}–{gc.boys_end_col} · {gc.boys_total_seats} Seats)</span>
+                      </div>
+                    );
+
+                    return girlsFirst ? [girlsHeader, boysHeader] : [boysHeader, girlsHeader];
+                  })()}
+                </div>
+                <div className="w-8 shrink-0 hidden md:block" />
+              </div>
+            )}
+
             {Array.from({ length: rows }, (_, rowIdx) => {
               const r = rowIdx + 1;
               return (
@@ -307,6 +405,7 @@ export const SeatingMatrix: React.FC<SeatingMatrixProps> = ({
                       const key = `${r}-${c}`;
                       const student = studentMap.get(key);
                       const posNum = (r - 1) * cols + c;
+                      const zone = getSeatZone(r, c);
 
                       return (
                         <SeatCard
@@ -317,6 +416,8 @@ export const SeatingMatrix: React.FC<SeatingMatrixProps> = ({
                           student={student}
                           mode={mode}
                           filter={filter}
+                          zoneGender={zone}
+                          enforceSeatingRule={classroom.enforce_seating_rule !== false}
                           markState={student ? (marks[student.id] || 'Present') : undefined}
                           onToggleMark={onToggleMark}
                           onMarkPresent={onMarkPresent}

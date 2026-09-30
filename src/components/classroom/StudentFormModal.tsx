@@ -37,6 +37,12 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const classroomBranches = React.useMemo(() => {
+    if (classroom.branches && classroom.branches.length > 0) return classroom.branches;
+    if (classroom.branch) return classroom.branch.split(/[+,/]/).map(s => s.trim()).filter(Boolean);
+    return [];
+  }, [classroom]);
+
   useEffect(() => {
     if (existingStudent) {
       setName(existingStudent.student_name);
@@ -48,8 +54,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     } else {
       setName('');
       setRollNumber('');
-      setBranch(classroom.class_name.includes('AI') ? 'AI & DS' : 'CSE');
-      setGender(defaultGender || 'Male');
+      setBranch(classroomBranches.length > 0 ? classroomBranches[0] : (classroom.class_name.includes('AI') ? 'AI & DS' : 'CSE'));
       
       const occupied = new Set(existingStudents.map(s => `${s.row_number}-${s.column_number}`));
       let initialRow = targetRow || 1;
@@ -71,6 +76,28 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
       setRow(initialRow);
       setCol(initialCol);
+
+      // Determine default gender based on designated seat zone
+      let zoneDefault: StudentGender = defaultGender || 'Male';
+      if (classroom.gender_config) {
+        const gc = classroom.gender_config;
+        if (
+          initialRow >= gc.girls_start_row &&
+          initialRow <= gc.girls_end_row &&
+          initialCol >= gc.girls_start_col &&
+          initialCol <= gc.girls_end_col
+        ) {
+          zoneDefault = 'Female';
+        } else if (
+          initialRow >= gc.boys_start_row &&
+          initialRow <= gc.boys_end_row &&
+          initialCol >= gc.boys_start_col &&
+          initialCol <= gc.boys_end_col
+        ) {
+          zoneDefault = 'Male';
+        }
+      }
+      setGender(zoneDefault);
     }
     setError(null);
     setConfirmDelete(false);
@@ -84,6 +111,28 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   // Auto-calculated position representation
   const positionTag = `R${row}-C${col}`;
   const positionNumber = (row - 1) * classroom.columns + col;
+
+  const expectedZoneGender: StudentGender | null = React.useMemo(() => {
+    const gc = classroom.gender_config;
+    if (!gc) return null;
+    if (
+      row >= gc.girls_start_row &&
+      row <= gc.girls_end_row &&
+      col >= gc.girls_start_col &&
+      col <= gc.girls_end_col
+    ) {
+      return 'Female';
+    }
+    if (
+      row >= gc.boys_start_row &&
+      row <= gc.boys_end_row &&
+      col >= gc.boys_start_col &&
+      col <= gc.boys_end_col
+    ) {
+      return 'Male';
+    }
+    return null;
+  }, [classroom.gender_config, row, col]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +188,37 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     if (duplicateSeat) {
       setError(`Seat ${positionTag} (Row ${numRow}, Col ${numCol}) is already occupied by ${duplicateSeat.student_name}.`);
       return;
+    }
+
+    // Validation 5: Seating Division Rule (Must and Should Follow)
+    if (classroom.gender_config) {
+      const gc = classroom.gender_config;
+      const isGirlSeat =
+        numRow >= gc.girls_start_row &&
+        numRow <= gc.girls_end_row &&
+        numCol >= gc.girls_start_col &&
+        numCol <= gc.girls_end_col;
+
+      const isBoySeat =
+        numRow >= gc.boys_start_row &&
+        numRow <= gc.boys_end_row &&
+        numCol >= gc.boys_start_col &&
+        numCol <= gc.boys_end_col;
+
+      const requiredGender: StudentGender | null = isGirlSeat ? 'Female' : isBoySeat ? 'Male' : null;
+
+      if (requiredGender && gender !== requiredGender) {
+        if (classroom.enforce_seating_rule !== false) {
+          setError(
+            `Seating Rule Enforcement (Must and Should Follow): Seat ${positionTag} is designated for ${
+              requiredGender === 'Female' ? 'Girls (Female)' : 'Boys (Male)'
+            } students. Please set gender to ${
+              requiredGender === 'Female' ? 'Female' : 'Male'
+            } or choose a seat in the ${gender === 'Female' ? 'Girls' : 'Boys'} section.`
+          );
+          return;
+        }
+      }
     }
 
     try {
@@ -258,15 +338,28 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
               <select
                 value={branch}
                 onChange={e => setBranch(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600 font-medium"
               >
-                <option value="AI & DS">AI & DS</option>
-                <option value="CSE">CSE</option>
-                <option value="IT">IT</option>
-                <option value="ECE">ECE</option>
-                <option value="EEE">EEE</option>
-                <option value="MECH">MECH</option>
-                <option value="CIVIL">CIVIL</option>
+                {classroomBranches.length > 0 && (
+                  <optgroup label="Classroom Branches (Combined Streams)">
+                    {classroomBranches.map(b => (
+                      <option key={`cls-br-${b}`} value={b}>★ {b}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="All Departments">
+                  <option value="AI & DS">AI & DS</option>
+                  <option value="CSE">CSE</option>
+                  <option value="IT">IT</option>
+                  <option value="ECE">ECE</option>
+                  <option value="EEE">EEE</option>
+                  <option value="MECH">MECH</option>
+                  <option value="CIVIL">CIVIL</option>
+                  <option value="CS-BS">CS-BS</option>
+                  <option value="AIML">AIML</option>
+                  <option value="Cyber Security">Cyber Security</option>
+                  <option value="General">General</option>
+                </optgroup>
               </select>
             </div>
           </div>
@@ -356,6 +449,24 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
               <span>Theatre Seat Sequence:</span>
               <span className="font-mono font-bold text-slate-700">#{positionNumber} of {classroom.rows * classroom.columns}</span>
             </div>
+
+            {expectedZoneGender && (
+              <div className={`p-2.5 rounded-xl text-xs flex items-center justify-between border shadow-2xs ${
+                expectedZoneGender === 'Female'
+                  ? 'bg-pink-50 text-pink-900 border-pink-200'
+                  : 'bg-blue-50 text-blue-900 border-blue-200'
+              }`}>
+                <span className="font-semibold flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${expectedZoneGender === 'Female' ? 'bg-pink-500' : 'bg-blue-500'}`} />
+                  <span>{expectedZoneGender === 'Female' ? '👩 Designated Girls Section' : '👨 Designated Boys Section'}</span>
+                </span>
+                {classroom.enforce_seating_rule !== false && (
+                  <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-900 shadow-2xs">
+                    Must & Should Follow
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Inline Delete Confirmation if requested */}

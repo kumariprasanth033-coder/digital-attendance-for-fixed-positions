@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { Classroom } from '../../types';
@@ -18,6 +18,7 @@ import {
 
 export const ClassroomsPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -46,18 +47,38 @@ export const ClassroomsPage: React.FC = () => {
     class_name: string;
     rows: number;
     columns: number;
-    layout_type?: 'dual_matrix' | 'single_matrix';
-    boys_rows?: number;
-    boys_columns?: number;
-    girls_rows?: number;
-    girls_columns?: number;
+    branch?: string;
+    branches?: string[];
+    branch_configs?: import('../../types').BranchSeatingConfig[];
+    seating_division_mode?: 'gender' | 'branch' | 'both' | 'unified';
+    gender_config?: import('../../types').GenderSeatingConfig;
+    enforce_seating_rule?: boolean;
+    initialAction?: 'assign_student' | 'bulk_import' | 'view';
   }) => {
     if (!user) return;
-    await api.createClassroom({
+    const newCls = await api.createClassroom({
       faculty_id: user.id,
-      ...data
+      class_name: data.class_name,
+      rows: data.rows,
+      columns: data.columns,
+      branch: data.branch,
+      branches: data.branches,
+      branch_configs: data.branch_configs,
+      seating_division_mode: data.seating_division_mode,
+      gender_config: data.gender_config,
+      enforce_seating_rule: data.enforce_seating_rule
     });
+    setShowCreateModal(false);
     await loadClassrooms();
+    if (newCls) {
+      if (data.initialAction === 'assign_student') {
+        navigate(`/faculty/classrooms/${newCls.id}?action=assign_student`);
+      } else if (data.initialAction === 'bulk_import') {
+        navigate(`/faculty/classrooms/${newCls.id}?action=bulk_import`);
+      } else {
+        navigate(`/faculty/classrooms/${newCls.id}`);
+      }
+    }
   };
 
   const handleUpdate = async (id: string, updates: Partial<Classroom>) => {
@@ -161,6 +182,53 @@ export const ClassroomsPage: React.FC = () => {
                     <h3 className="text-lg font-bold text-slate-900 tracking-tight">
                       {c.class_name}
                     </h3>
+
+                    {/* Multi-branch tags */}
+                    {(() => {
+                      const list = c.branches && c.branches.length > 0
+                        ? c.branches
+                        : c.branch
+                        ? c.branch.split(/[+,/]/).map(s => s.trim()).filter(Boolean)
+                        : [];
+                      if (list.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          {list.map((br, idx) => (
+                            <span
+                              key={idx}
+                              className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-100"
+                            >
+                              {br}
+                            </span>
+                          ))}
+                          {list.length > 1 && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              Combined Batch
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Gender seating division tags */}
+                    {c.gender_config && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-[11px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
+                          Girls: {c.gender_config.girls_total_seats}
+                        </span>
+                        <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          Boys: {c.gender_config.boys_total_seats}
+                        </span>
+                        {c.enforce_seating_rule !== false && (
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded shadow-2xs">
+                            🛡️ Must & Should Follow
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-4 text-xs text-slate-500 mt-2">
                       <span className="flex items-center gap-1.5 font-medium">
                         <Users className="w-3.5 h-3.5 text-blue-500" />

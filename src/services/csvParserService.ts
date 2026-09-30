@@ -81,8 +81,6 @@ export interface ProcessedRosterResult {
   summary: ProcessedRosterSummary;
 }
 
-export type AllocationStrategy = 'category_side_by_side' | 'category_rows' | 'sequential_vacant';
-
 // Heuristic name dictionaries for gender assistance when gender field is ambiguous
 const COMMON_MALE_NAMES = new Set([
   'aarav', 'rohan', 'rahul', 'siddharth', 'aditya', 'karan', 'vikram', 'arjun',
@@ -240,7 +238,7 @@ export class CsvParserService {
     fileName: string,
     classroom: Classroom,
     existingStudents: Student[],
-    strategy: AllocationStrategy = 'category_side_by_side'
+    _strategy?: string
   ): ProcessedRosterResult {
     const { headers, records } = this.parseFileToRecords(fileData);
     const columnMapping = this.detectColumns(headers);
@@ -308,7 +306,7 @@ export class CsvParserService {
     });
 
     // Run Automatic Seat Allocation
-    const rowsWithSeats = this.allocateSeats(rows, classroom, existingStudents, strategy);
+    const rowsWithSeats = this.allocateSeats(rows, classroom, existingStudents);
 
     // Compute Summary Metrics
     const totalClassroomSeats = classroom.rows * classroom.columns;
@@ -361,71 +359,33 @@ export class CsvParserService {
   }
 
   /**
-   * Automatic Category-Aware Seat Allocation
-   * Places students into available seats without overwriting occupied slots.
+   * Automatic Seat Allocation
+   * Places students into ONE combined available-seat pool in the physical classroom.
+   * If branch_configs exist, prioritizes placing students into their stream's designated rows/columns.
+   * Does NOT create separate Boys and Girls seat pools.
    */
   public static allocateSeats(
     candidateRows: ProcessedStudentRow[],
     classroom: Classroom,
     existingStudents: Student[],
-    strategy: AllocationStrategy = 'category_side_by_side'
+    _strategy?: string
   ): ProcessedStudentRow[] {
     const gridRows = classroom.rows;
     const gridCols = classroom.columns;
     const occupiedSeats = new Set(existingStudents.map(s => `${s.row_number}-${s.column_number}`));
 
-    const halfCols = Math.ceil(gridCols / 2);
-
-    const availableBoysSlots: Array<{ r: number; c: number; pos: number }> = [];
-    const availableGirlsSlots: Array<{ r: number; c: number; pos: number }> = [];
-    const generalAvailableSlots: Array<{ r: number; c: number; pos: number }> = [];
+    // Overall available slots in row-major order: R1-C1, R1-C2, R1-C3...
+    const allAvailableSlots: Array<{ r: number; c: number; pos: number }> = [];
 
     for (let r = 1; r <= gridRows; r++) {
       for (let c = 1; c <= gridCols; c++) {
         const key = `${r}-${c}`;
         if (!occupiedSeats.has(key)) {
           const pos = (r - 1) * gridCols + c;
-          generalAvailableSlots.push({ r, c, pos });
-          if (c <= halfCols) {
-            availableBoysSlots.push({ r, c, pos });
-          } else {
-            availableGirlsSlots.push({ r, c, pos });
-          }
+          allAvailableSlots.push({ r, c, pos });
         }
       }
     }
-
-    const usedSlots = new Set<string>();
-
-    const assignToSlot = (
-      row: ProcessedStudentRow,
-      preferredSlots: Array<{ r: number; c: number; pos: number }>
-    ): ProcessedStudentRow => {
-      // 1. Try preferred slot (Boys on left wing, Girls on right wing)
-      let slot = preferredSlots.find(s => !usedSlots.has(`${s.r}-${s.c}`));
-
-      // 2. If preferred wing is full, find any remaining vacant slot in the auditorium
-      if (!slot) {
-        slot = generalAvailableSlots.find(s => !usedSlots.has(`${s.r}-${s.c}`));
-      }
-
-      if (slot) {
-        usedSlots.add(`${slot.r}-${slot.c}`);
-        return {
-          ...row,
-          assignedRow: slot.r,
-          assignedCol: slot.c,
-          assignedPosition: slot.pos,
-          seatId: `R${slot.r}-C${slot.c}`
-        };
-      } else {
-        return {
-          ...row,
-          status: 'no_seat_available',
-          statusMessage: 'Classroom capacity exceeded: No seat available'
-        };
-      }
-    };
 
     const validOrReviewable = candidateRows.filter(
       r => r.status === 'valid' || r.status === 'needs_review' || r.status === 'no_seat_available'
@@ -434,25 +394,144 @@ export class CsvParserService {
       r => r.status !== 'valid' && r.status !== 'needs_review' && r.status !== 'no_seat_available'
     );
 
-    const boys = validOrReviewable.filter(r => r.gender === 'Male');
-    const girls = validOrReviewable.filter(r => r.gender === 'Female');
-    const unclear = validOrReviewable.filter(r => r.gender === 'Unclear');
+    // If branch_configs are defined, build separate slot pools for each branch
+    const hasBranchConfigs = classroom.branch_configs && classroom.branch_configs.length > 0;
+    const branchSlotMap = new Map<string, Array<{ r: number; c: number; pos: number }>>();
+    const usedSlotKeys = new Set<string>();
 
-    const allocatedList: ProcessedStudentRow[] = [];
+    if (hasBranchConfigs) {
+      classroom.branch_configs!.forEach(bc => {
+        const bSlots: Array<{ r: number; c: number; pos: number }> = [];
+        for (let r = (bc.start_row || 1); r <= (bc.end_row || gridRows); r++) {
+          for (let c = (bc.start_col || 1); c <= (bc.end_col || gridCols); c++) {
+            const key = `${r}-${c}`;
+            if (!occupiedSeats.has(key)) {
+              bSlots.push({ r, c, pos: (r - 1) * gridCols + c });
+            }
+          }
+        }
+        branchSlotMap.set(bc.branch.toUpperCase(), bSlots);
+      });
+    }
 
-    // Allocate Boys
-    boys.forEach(b => {
-      allocatedList.push(assignToSlot(b, strategy === 'category_side_by_side' ? availableBoysSlots : generalAvailableSlots));
-    });
+    // If gender_config is defined, build designated Girls and Boys slot pools
+    const hasGenderConfig = Boolean(classroom.gender_config);
+    const girlsSlotPool: Array<{ r: number; c: number; pos: number }> = [];
+    const boysSlotPool: Array<{ r: number; c: number; pos: number }> = [];
 
-    // Allocate Girls
-    girls.forEach(g => {
-      allocatedList.push(assignToSlot(g, strategy === 'category_side_by_side' ? availableGirlsSlots : generalAvailableSlots));
-    });
+    if (hasGenderConfig) {
+      const gc = classroom.gender_config!;
+      for (let r = 1; r <= gridRows; r++) {
+        for (let c = 1; c <= gridCols; c++) {
+          const key = `${r}-${c}`;
+          if (!occupiedSeats.has(key)) {
+            const pos = (r - 1) * gridCols + c;
+            if (
+              r >= gc.girls_start_row &&
+              r <= gc.girls_end_row &&
+              c >= gc.girls_start_col &&
+              c <= gc.girls_end_col
+            ) {
+              girlsSlotPool.push({ r, c, pos });
+            } else if (
+              r >= gc.boys_start_row &&
+              r <= gc.boys_end_row &&
+              c >= gc.boys_start_col &&
+              c <= gc.boys_end_col
+            ) {
+              boysSlotPool.push({ r, c, pos });
+            }
+          }
+        }
+      }
+    }
 
-    // Allocate Unclear
-    unclear.forEach(u => {
-      allocatedList.push(assignToSlot(u, generalAvailableSlots));
+    const isStrictRule = classroom.enforce_seating_rule !== false;
+
+    const allocatedList: ProcessedStudentRow[] = validOrReviewable.map(row => {
+      let allocatedSlot: { r: number; c: number; pos: number } | undefined;
+      let policyBlockedReason: string | undefined;
+
+      // 1. If Gender Seating is configured, prioritize student's designated gender zone
+      if (hasGenderConfig) {
+        if (row.gender === 'Female') {
+          while (girlsSlotPool.length > 0) {
+            const candidate = girlsSlotPool.shift();
+            if (candidate && !usedSlotKeys.has(`${candidate.r}-${candidate.c}`)) {
+              allocatedSlot = candidate;
+              usedSlotKeys.add(`${candidate.r}-${candidate.c}`);
+              break;
+            }
+          }
+          if (!allocatedSlot && isStrictRule) {
+            policyBlockedReason = `Girls Section Full (${classroom.gender_config!.girls_total_seats} seats). Strict seating policy (Must & Should Follow) prohibits placing in boys seats.`;
+          }
+        } else if (row.gender === 'Male') {
+          while (boysSlotPool.length > 0) {
+            const candidate = boysSlotPool.shift();
+            if (candidate && !usedSlotKeys.has(`${candidate.r}-${candidate.c}`)) {
+              allocatedSlot = candidate;
+              usedSlotKeys.add(`${candidate.r}-${candidate.c}`);
+              break;
+            }
+          }
+          if (!allocatedSlot && isStrictRule) {
+            policyBlockedReason = `Boys Section Full (${classroom.gender_config!.boys_total_seats} seats). Strict seating policy (Must & Should Follow) prohibits placing in girls seats.`;
+          }
+        }
+      }
+
+      // 2. Try branch designated pool if available and not yet allocated
+      if (!allocatedSlot && !policyBlockedReason && hasBranchConfigs && row.branch) {
+        const branchKey = Object.keys(Object.fromEntries(branchSlotMap)).find(
+          k => row.branch.toUpperCase().includes(k) || k.includes(row.branch.toUpperCase())
+        );
+        if (branchKey) {
+          const pool = branchSlotMap.get(branchKey);
+          while (pool && pool.length > 0) {
+            const candidate = pool.shift();
+            if (candidate && !usedSlotKeys.has(`${candidate.r}-${candidate.c}`)) {
+              allocatedSlot = candidate;
+              usedSlotKeys.add(`${candidate.r}-${candidate.c}`);
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. Fallback to any remaining available slot in the classroom (if not blocked by strict gender rule)
+      if (!allocatedSlot && !policyBlockedReason) {
+        while (allAvailableSlots.length > 0) {
+          const candidate = allAvailableSlots.shift();
+          if (candidate && !usedSlotKeys.has(`${candidate.r}-${candidate.c}`)) {
+            allocatedSlot = candidate;
+            usedSlotKeys.add(`${candidate.r}-${candidate.c}`);
+            break;
+          }
+        }
+      }
+
+      if (allocatedSlot) {
+        return {
+          ...row,
+          assignedRow: allocatedSlot.r,
+          assignedCol: allocatedSlot.c,
+          assignedPosition: allocatedSlot.pos,
+          seatId: `R${allocatedSlot.r}-C${allocatedSlot.c}`,
+          status: row.status === 'no_seat_available' ? (row.gender === 'Unclear' ? 'needs_review' : 'valid') : row.status,
+          statusMessage: row.status === 'no_seat_available' ? undefined : row.statusMessage
+        };
+      } else {
+        return {
+          ...row,
+          assignedRow: undefined,
+          assignedCol: undefined,
+          assignedPosition: undefined,
+          seatId: undefined,
+          status: 'no_seat_available',
+          statusMessage: policyBlockedReason || 'Classroom capacity exceeded: No seat available'
+        };
+      }
     });
 
     return [...allocatedList, ...invalidRows].sort((a, b) => a.index - b.index);

@@ -71,8 +71,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         fileData,
         name,
         activeClassroom,
-        existingStudents,
-        'category_side_by_side'
+        existingStudents
       );
 
       setParsedRows(result.rows);
@@ -138,8 +137,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
       const reallocated = CsvParserService.allocateSeats(
         updatedCandidates,
         activeClassroom,
-        existingStudents,
-        'category_side_by_side'
+        existingStudents
       );
 
       return reallocated;
@@ -183,8 +181,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
     const reallocated = CsvParserService.allocateSeats(
       parsedRows,
       expandedClassroom,
-      existingStudents,
-      'category_side_by_side'
+      existingStudents
     );
     setParsedRows(reallocated);
   };
