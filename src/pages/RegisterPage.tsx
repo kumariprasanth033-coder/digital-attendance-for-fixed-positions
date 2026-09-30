@@ -13,6 +13,7 @@ export const RegisterPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -42,10 +43,14 @@ export const RegisterPage: React.FC = () => {
     try {
       const res = await register(fullName, email, password, role);
       if (res.success) {
-        if (role === 'admin') {
-          navigate('/admin/dashboard');
+        if (res.emailConfirmationRequired) {
+          setConfirmationSent(true);
         } else {
-          navigate('/faculty/dashboard');
+          if (role === 'admin') {
+            navigate('/admin/dashboard');
+          } else {
+            navigate('/faculty/dashboard');
+          }
         }
       } else {
         setError(res.error || 'Failed to create account.');
@@ -56,6 +61,36 @@ export const RegisterPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (confirmationSent) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4 py-12">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-xl border border-slate-200 text-center animate-in fade-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-4 shadow-xs">
+              <Mail className="w-7 h-7" />
+            </div>
+            <h2 className="text-2xl font-extrabold text-slate-900 font-display">
+              Verify Your Email
+            </h2>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              We have sent a confirmation email to <strong className="text-slate-900">{email}</strong>. Please click the link in your email to activate your account.
+            </p>
+            <div className="mt-6 space-y-2.5">
+              <Link
+                to={`/login?role=${role}`}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xs"
+              >
+                <span>Continue to Faculty Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

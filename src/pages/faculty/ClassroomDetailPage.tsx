@@ -89,7 +89,29 @@ export const ClassroomDetailPage: React.FC = () => {
       if (!actionProcessedRef.current) {
         actionProcessedRef.current = true;
         const action = searchParams.get('action');
-        if (action === 'assign_student') {
+        const rollParam = searchParams.get('roll');
+        const seatParam = searchParams.get('seat');
+
+        if (rollParam) {
+          const matched = stList.find(s => s.roll_number.trim().toUpperCase() === rollParam.trim().toUpperCase());
+          if (matched) {
+            setSelectedStudent(matched);
+            setTargetRow(matched.row_number);
+            setTargetCol(matched.column_number);
+            setStudentModalOpen(true);
+          }
+        } else if (seatParam) {
+          const match = seatParam.match(/R(\d+)[-–_C\s]+(\d+)/i);
+          if (match) {
+            const r = parseInt(match[1]);
+            const c = parseInt(match[2]);
+            const occupant = stList.find(s => s.row_number === r && s.column_number === c);
+            setSelectedStudent(occupant || null);
+            setTargetRow(r);
+            setTargetCol(c);
+            setStudentModalOpen(true);
+          }
+        } else if (action === 'assign_student') {
           // Immediately open Assign Student to Seat modal (the exact modal requested)
           setSelectedStudent(null);
           setTargetRow(1);

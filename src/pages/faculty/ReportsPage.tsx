@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { Classroom, StudentAggregateReport } from '../../types';
@@ -18,11 +19,13 @@ import {
 
 export const ReportsPage: React.FC = () => {
   const { user, profile } = useAuth();
+  const [searchParams] = useSearchParams();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
   const [reports, setReports] = useState<StudentAggregateReport[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const downloadTriggeredRef = useRef(false);
 
   // Load classrooms on mount
   useEffect(() => {
@@ -33,7 +36,12 @@ export const ReportsPage: React.FC = () => {
         const list = await api.getClassrooms(user.id);
         setClassrooms(list);
         if (list.length > 0) {
-          setSelectedClassroomId(list[0].id);
+          const queryClassroomId = searchParams.get('classroom_id');
+          if (queryClassroomId && list.some(c => c.id === queryClassroomId)) {
+            setSelectedClassroomId(queryClassroomId);
+          } else {
+            setSelectedClassroomId(list[0].id);
+          }
         }
       } catch (err) {
         console.error('Failed to load classrooms for reports:', err);
@@ -43,7 +51,7 @@ export const ReportsPage: React.FC = () => {
     };
 
     loadClassrooms();
-  }, [user]);
+  }, [user, searchParams]);
 
   // Load report when selected classroom changes
   useEffect(() => {
@@ -123,6 +131,14 @@ export const ReportsPage: React.FC = () => {
 
     api.downloadCSV(filename, headers, rows);
   };
+
+  // Automatically trigger CSV download if requested via query action
+  useEffect(() => {
+    if (!loading && reports.length > 0 && searchParams.get('action') === 'download' && !downloadTriggeredRef.current) {
+      downloadTriggeredRef.current = true;
+      handleDownloadCSV();
+    }
+  }, [loading, reports, searchParams]);
 
   const handlePrint = () => {
     window.print();

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 import { Navbar } from '../components/common/Navbar';
-import { UserCheck, ShieldCheck, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { UserCheck, ShieldCheck, Lock, Mail, AlertCircle, ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -17,11 +17,47 @@ export const LoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const { login } = useAuth();
+  // Email confirmation states
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+  const [verifiedSuccess, setVerifiedSuccess] = useState<string | null>(null);
+
+  const { login, resendConfirmationEmail, devConfirmAndLogin } = useAuth();
   const navigate = useNavigate();
+
+  // Check URL on mount for email confirmation redirect or verified param
+  useEffect(() => {
+    const isVerifiedParam = searchParams.get('verified') === 'true';
+    const hash = window.location.hash;
+    const hasSignupHash = hash.includes('type=signup') || hash.includes('type=email_verification');
+    const hasAccessToken = hash.includes('access_token=');
+
+    if (isVerifiedParam || (hasAccessToken && hasSignupHash)) {
+      setVerifiedSuccess('Email verified successfully! You can now sign in with your credentials.');
+      // Clean hash without full page reload
+      if (window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }, [searchParams]);
+
+  // Countdown timer for resend button
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const handleRoleChange = (newRole: UserRole) => {
     setRole(newRole);
+    setError(null);
+    setEmailNotConfirmed(false);
+    setResendSuccess(null);
     if (newRole === 'admin') {
       setEmail('admin.portal@university.edu');
     } else {
@@ -32,21 +68,66 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setEmailNotConfirmed(false);
+    setResendSuccess(null);
     setLoading(true);
 
     try {
       const res = await login(email, password, role);
+      if (res.success) {
+        const targetRole = res.userRole || role;
+        if (targetRole === 'admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/faculty/dashboard');
+        }
+      } else {
+        if (res.emailNotConfirmed) {
+          setEmailNotConfirmed(true);
+        } else {
+          setError(res.error || 'Incorrect email or password.');
+        }
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please check credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    setError(null);
+    setResendSuccess(null);
+
+    try {
+      const res = await resendConfirmationEmail(email);
+      if (res.success) {
+        setResendSuccess('Confirmation email sent. Please check your inbox and spam folder.');
+        setResendCooldown(30); // 30-second cooldown
+      } else {
+        setError(res.error || 'Failed to resend confirmation email.');
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Unable to send confirmation email.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleDevBypass = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await devConfirmAndLogin(email, role);
       if (res.success) {
         if (role === 'admin') {
           navigate('/admin/dashboard');
         } else {
           navigate('/faculty/dashboard');
         }
-      } else {
-        setError(res.error || 'Invalid credentials.');
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -76,7 +157,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="button"
               onClick={() => handleRoleChange('faculty')}
-              className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 role === 'faculty'
                   ? 'bg-white text-indigo-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -87,7 +168,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="button"
               onClick={() => handleRoleChange('admin')}
-              className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 role === 'admin'
                   ? 'bg-white text-purple-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -97,10 +178,71 @@ export const LoginPage: React.FC = () => {
             </button>
           </div>
 
+          {/* Email verification success alert */}
+          {verifiedSuccess && (
+            <div className="mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2.5 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{verifiedSuccess}</span>
+            </div>
+          )}
+
+          {/* General login error alert */}
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* Explicit "Email Not Confirmed" Handled Box */}
+          {emailNotConfirmed && (
+            <div className="mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs space-y-2.5 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-amber-950">
+                    Your email address has not been confirmed yet.
+                  </h4>
+                  <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                    A verification link was sent to <strong>{email}</strong>. Please check your inbox and spam folder to confirm your academic account.
+                  </p>
+                </div>
+              </div>
+
+              {resendSuccess && (
+                <div className="p-2 rounded-lg bg-emerald-100/80 border border-emerald-300 text-emerald-900 text-[11px] flex items-center gap-1.5 font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>{resendSuccess}</span>
+                </div>
+              )}
+
+              <div className="pt-1 flex flex-col sm:flex-row items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resendCooldown > 0 || resending}
+                  className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
+                  <span>
+                    {resendCooldown > 0 
+                      ? `Resend available in ${resendCooldown}s` 
+                      : resending 
+                      ? 'Sending...' 
+                      : 'Resend Confirmation Email'}
+                  </span>
+                </button>
+
+                {/* Development mode convenience helper */}
+                <button
+                  type="button"
+                  onClick={handleDevBypass}
+                  className="text-[11px] text-indigo-700 hover:text-indigo-900 font-semibold underline sm:ml-auto cursor-pointer"
+                  title="Verify session immediately for demo testing"
+                >
+                  [Dev Testing: Verify & Enter]
+                </button>
+              </div>
             </div>
           )}
 
@@ -145,7 +287,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white transition-all shadow-xs flex items-center justify-center gap-2 ${
+              className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer ${
                 role === 'admin'
                   ? 'bg-purple-700 hover:bg-purple-800'
                   : 'bg-indigo-600 hover:bg-indigo-700'
@@ -169,6 +311,7 @@ export const LoginPage: React.FC = () => {
                   setEmail('ramesh.faculty@university.edu');
                   setPassword('password123');
                   setError(null);
+                  setEmailNotConfirmed(false);
                   setLoading(true);
                   try {
                     const res = await login('ramesh.faculty@university.edu', 'password123', 'faculty');
@@ -182,7 +325,7 @@ export const LoginPage: React.FC = () => {
                   }
                 }}
                 disabled={loading}
-                className="p-2.5 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 font-medium text-left border border-indigo-200/80 transition-all hover:shadow-xs disabled:opacity-50"
+                className="p-2.5 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 font-medium text-left border border-indigo-200/80 transition-all hover:shadow-xs disabled:opacity-50 cursor-pointer"
               >
                 <div className="font-bold flex items-center justify-between">
                   <span>Faculty Login</span>
@@ -198,6 +341,7 @@ export const LoginPage: React.FC = () => {
                   setEmail('admin.portal@university.edu');
                   setPassword('password123');
                   setError(null);
+                  setEmailNotConfirmed(false);
                   setLoading(true);
                   try {
                     const res = await login('admin.portal@university.edu', 'password123', 'admin');
@@ -211,7 +355,7 @@ export const LoginPage: React.FC = () => {
                   }
                 }}
                 disabled={loading}
-                className="p-2.5 rounded-xl bg-purple-50/80 hover:bg-purple-100 text-purple-700 font-medium text-left border border-purple-200/80 transition-all hover:shadow-xs disabled:opacity-50"
+                className="p-2.5 rounded-xl bg-purple-50/80 hover:bg-purple-100 text-purple-700 font-medium text-left border border-purple-200/80 transition-all hover:shadow-xs disabled:opacity-50 cursor-pointer"
               >
                 <div className="font-bold flex items-center justify-between">
                   <span>Admin Login</span>

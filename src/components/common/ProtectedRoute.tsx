@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole } from '../../types';
+import { FacultyChatWidget } from '../chat/FacultyChatWidget';
 
 interface ProtectedRouteProps {
   requiredRole?: UserRole;
@@ -36,5 +37,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole }) 
     }
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      {role === 'faculty' && <FacultyChatWidget />}
+    </>
+  );
 };

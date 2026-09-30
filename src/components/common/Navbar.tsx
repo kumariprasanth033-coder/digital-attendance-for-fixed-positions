@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Database, UserCheck, ShieldCheck, LogOut, ChevronDown, User } from 'lucide-react';
+import { Database, UserCheck, ShieldCheck, LogOut, ChevronDown, User, Sparkles } from 'lucide-react';
 import { SupabaseConfigModal } from './SupabaseConfigModal';
 
 export const Navbar: React.FC = () => {
@@ -99,7 +99,23 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Zone 3: 1-2 primary actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Faculty AI Assistant Quick Trigger */}
+            {role === 'faculty' && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-faculty-chat'))}
+                title="Open Faculty AI Assistant (Real Database Query)"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 border border-indigo-200/80 text-indigo-700 hover:bg-indigo-600 hover:text-white transition-all shadow-2xs cursor-pointer group"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 group-hover:text-amber-300 animate-pulse" />
+                <span>AI Assistant</span>
+                <span className="hidden xl:inline text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-100 group-hover:bg-indigo-700 text-indigo-800 group-hover:text-indigo-100">
+                  Real DB
+                </span>
+              </button>
+            )}
+
             {/* Supabase status / config button */}
             <button
               onClick={() => setShowConfig(true)}
