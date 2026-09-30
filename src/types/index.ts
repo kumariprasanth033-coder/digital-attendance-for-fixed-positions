@@ -40,6 +40,10 @@ export interface Student {
   branch: string;
   gender: StudentGender;
   section_wing?: 'boys' | 'girls';
+  section?: string;
+  email?: string;
+  mobile?: string;
+  seat_id?: string;
   row_number: number;
   column_number: number;
   position_number: number;

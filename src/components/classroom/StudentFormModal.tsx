@@ -50,14 +50,36 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       setRollNumber('');
       setBranch(classroom.class_name.includes('AI') ? 'AI & DS' : 'CSE');
       setGender(defaultGender || 'Male');
-      setRow(targetRow || 1);
-      setCol(targetCol || 1);
+      
+      const occupied = new Set(existingStudents.map(s => `${s.row_number}-${s.column_number}`));
+      let initialRow = targetRow || 1;
+      let initialCol = targetCol || 1;
+
+      // Automatically find next vacant seat if target is occupied
+      if (occupied.has(`${initialRow}-${initialCol}`)) {
+        let found = false;
+        for (let r = 1; r <= classroom.rows && !found; r++) {
+          for (let c = 1; c <= classroom.columns && !found; c++) {
+            if (!occupied.has(`${r}-${c}`)) {
+              initialRow = r;
+              initialCol = c;
+              found = true;
+            }
+          }
+        }
+      }
+
+      setRow(initialRow);
+      setCol(initialCol);
     }
     setError(null);
     setConfirmDelete(false);
-  }, [existingStudent, targetRow, targetCol, classroom, isOpen, defaultGender]);
+  }, [existingStudent, targetRow, targetCol, classroom, isOpen, defaultGender, existingStudents]);
 
   if (!isOpen) return null;
+
+  const totalSeats = classroom.rows * classroom.columns;
+  const isClassroomFull = !existingStudent && existingStudents.length >= totalSeats;
 
   // Auto-calculated position representation
   const positionTag = `R${row}-C${col}`;
@@ -181,6 +203,16 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {isClassroomFull && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <strong className="block font-bold">No available seats in this classroom</strong>
+                <span>All {totalSeats} seats are occupied ({existingStudents.length}/{totalSeats}). Please increase classroom dimensions or remove a student first.</span>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
@@ -379,11 +411,11 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isClassroomFull}
                 className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                {loading ? 'Saving...' : existingStudent ? 'Update Student' : 'Save Student'}
+                {loading ? 'Saving...' : existingStudent ? 'Update Student' : isClassroomFull ? 'No Available Seats' : 'Save Student'}
               </button>
             </div>
           </div>

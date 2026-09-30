@@ -118,20 +118,14 @@ export const SeatCard: React.FC<SeatCardProps> = ({
     }
   } else {
     // Manage / View mode
-    if (filter === 'boys') {
-      if (isMale) {
-        cardStyle = 'border-blue-300 bg-blue-50/30 ring-2 ring-blue-500/40 shadow-sm';
-      } else {
-        // Girl in Boys view: keep exactly in place, softly dimmed, all operations active
-        cardStyle = 'border-slate-200 bg-slate-50/80 opacity-55 hover:opacity-100 shadow-2xs';
-      }
-    } else if (filter === 'girls') {
-      if (isFemale) {
-        cardStyle = 'border-pink-300 bg-pink-50/30 ring-2 ring-pink-500/40 shadow-sm';
-      } else {
-        // Boy in Girls view: keep exactly in place, softly dimmed, all operations active
-        cardStyle = 'border-slate-200 bg-slate-50/80 opacity-55 hover:opacity-100 shadow-2xs';
-      }
+    if (filter === 'boys' || isMale) {
+      cardStyle = isMale 
+        ? 'border-blue-300 bg-blue-50/20 hover:border-blue-400 shadow-xs' 
+        : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
+    } else if (filter === 'girls' || isFemale) {
+      cardStyle = isFemale 
+        ? 'border-pink-300 bg-pink-50/20 hover:border-pink-400 shadow-xs' 
+        : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs';
     }
   }
 
@@ -194,10 +188,7 @@ export const SeatCard: React.FC<SeatCardProps> = ({
               : 'bg-pink-100 text-pink-800 border border-pink-200'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${isMale ? 'bg-blue-600' : 'bg-pink-600'}`} />
-            {isMale ? 'Boy' : 'Girl'}
-            {!isMatchingFilter && (
-              <span className="text-[9px] text-slate-500 font-normal">· Dimmed</span>
-            )}
+            {isMale ? 'BOY' : 'GIRL'}
           </span>
         )}
       </div>
@@ -211,7 +202,16 @@ export const SeatCard: React.FC<SeatCardProps> = ({
           {student.roll_number}
         </div>
         <div className="text-[11px] text-slate-500 truncate flex items-center justify-between mt-0.5">
-          <span className="font-medium text-slate-600 truncate mr-1">{student.branch}</span>
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="font-medium text-slate-600 truncate">{student.branch}</span>
+            {mode === 'attendance' && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded font-mono ${
+                isMale ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
+              }`}>
+                {isMale ? 'BOY' : 'GIRL'}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-slate-400 font-mono shrink-0">#{positionNumber}</span>
         </div>
       </div>

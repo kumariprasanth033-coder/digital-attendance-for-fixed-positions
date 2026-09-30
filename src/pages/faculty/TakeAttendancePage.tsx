@@ -151,8 +151,15 @@ export const TakeAttendancePage: React.FC = () => {
 
   const boysPresent = boysStudents.filter(s => (marks[s.id] || 'Present') === 'Present').length;
   const boysAbsent = boysStudents.length - boysPresent;
+  const boysPercentage = boysStudents.length > 0 
+    ? Math.round((boysPresent / boysStudents.length) * 1000) / 10 
+    : 100;
+
   const girlsPresent = girlsStudents.filter(s => (marks[s.id] || 'Present') === 'Present').length;
   const girlsAbsent = girlsStudents.length - girlsPresent;
+  const girlsPercentage = girlsStudents.length > 0 
+    ? Math.round((girlsPresent / girlsStudents.length) * 1000) / 10 
+    : 100;
 
   const handleSubmitAttendance = async () => {
     if (!classroom || !user) return;
@@ -291,59 +298,155 @@ export const TakeAttendancePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Attendance Statistics Bar */}
+        {/* Live Attendance Statistics Bar - Dynamic Category / All Dashboard */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
-            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Total Enrolled
-              </span>
-              <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
-                {totalEnrolled}
-              </span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Fixed Seats</span>
-            </div>
+          {filter === 'boys' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">
+                  Boys Total
+                </span>
+                <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                  {boysStudents.length}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Enrolled Boys</span>
+              </div>
 
-            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
-                Present (Default)
-              </span>
-              <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums">
-                {presentCount}
-              </span>
-              <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">In Seats</span>
-            </div>
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
+                  Boys Present
+                </span>
+                <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums">
+                  {boysPresent}
+                </span>
+                <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">In Seats</span>
+              </div>
 
-            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">
-                Absent (Flagged)
-              </span>
-              <span className="text-2xl font-black text-rose-600 font-mono tabular-nums">
-                {absentCount}
-              </span>
-              <span className="text-[10px] text-rose-500 font-medium block mt-0.5">Unexcused</span>
-            </div>
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">
+                  Boys Absent
+                </span>
+                <span className="text-2xl font-black text-rose-600 font-mono tabular-nums">
+                  {boysAbsent}
+                </span>
+                <span className="text-[10px] text-rose-500 font-medium block mt-0.5">Flagged Absent</span>
+              </div>
 
-            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">
-                Boys (Male)
-              </span>
-              <span className="text-lg font-black text-blue-700 font-mono tabular-nums">
-                {boysPresent} <span className="text-xs text-slate-400 font-normal">/ {boysStudents.length}</span>
-              </span>
-              <span className="text-[10px] text-blue-600 block mt-0.5">{boysAbsent} Absent</span>
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block">
+                  Boys Attendance %
+                </span>
+                <span className="text-2xl font-black text-indigo-700 font-mono tabular-nums">
+                  {boysPercentage}%
+                </span>
+                <span className="text-[10px] text-indigo-500 font-medium block mt-0.5">Turnout Rate</span>
+              </div>
             </div>
+          ) : filter === 'girls' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-pink-700 uppercase tracking-wider block">
+                  Girls Total
+                </span>
+                <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                  {girlsStudents.length}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Enrolled Girls</span>
+              </div>
 
-            <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
-              <span className="text-[11px] font-bold text-pink-700 uppercase tracking-wider block">
-                Girls (Female)
-              </span>
-              <span className="text-lg font-black text-pink-700 font-mono tabular-nums">
-                {girlsPresent} <span className="text-xs text-slate-400 font-normal">/ {girlsStudents.length}</span>
-              </span>
-              <span className="text-[10px] text-pink-600 block mt-0.5">{girlsAbsent} Absent</span>
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
+                  Girls Present
+                </span>
+                <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums">
+                  {girlsPresent}
+                </span>
+                <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">In Seats</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">
+                  Girls Absent
+                </span>
+                <span className="text-2xl font-black text-rose-600 font-mono tabular-nums">
+                  {girlsAbsent}
+                </span>
+                <span className="text-[10px] text-rose-500 font-medium block mt-0.5">Flagged Absent</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block">
+                  Girls Attendance %
+                </span>
+                <span className="text-2xl font-black text-indigo-700 font-mono tabular-nums">
+                  {girlsPercentage}%
+                </span>
+                <span className="text-[10px] text-indigo-500 font-medium block mt-0.5">Turnout Rate</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Total Enrolled
+                </span>
+                <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                  {totalEnrolled}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Fixed Seats</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">
+                  Present (Default)
+                </span>
+                <span className="text-2xl font-black text-emerald-600 font-mono tabular-nums">
+                  {presentCount}
+                </span>
+                <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">In Seats</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">
+                  Absent (Flagged)
+                </span>
+                <span className="text-2xl font-black text-rose-600 font-mono tabular-nums">
+                  {absentCount}
+                </span>
+                <span className="text-[10px] text-rose-500 font-medium block mt-0.5">Unexcused</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">
+                  Boys Present
+                </span>
+                <span className="text-lg font-black text-blue-700 font-mono tabular-nums">
+                  {boysPresent} <span className="text-xs text-slate-400 font-normal">/ {boysStudents.length}</span>
+                </span>
+                <span className="text-[10px] text-blue-600 block mt-0.5">{boysPercentage}% Present</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-pink-700 uppercase tracking-wider block">
+                  Girls Present
+                </span>
+                <span className="text-lg font-black text-pink-700 font-mono tabular-nums">
+                  {girlsPresent} <span className="text-xs text-slate-400 font-normal">/ {girlsStudents.length}</span>
+                </span>
+                <span className="text-[10px] text-pink-600 block mt-0.5">{girlsPercentage}% Present</span>
+              </div>
+
+              <div className="pt-2 sm:pt-0 sm:px-3 text-center sm:text-left">
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block">
+                  Total Turnout
+                </span>
+                <span className="text-2xl font-black text-indigo-700 font-mono tabular-nums">
+                  {percentage}%
+                </span>
+                <span className="text-[10px] text-indigo-500 font-medium block mt-0.5">Class Average</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick Batch Attendance Controls & Filter Bar */}

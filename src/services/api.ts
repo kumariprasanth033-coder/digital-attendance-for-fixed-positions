@@ -601,6 +601,100 @@ export const api = {
     return newStudent;
   },
 
+  async bulkAssignStudents(
+    classroomId: string, 
+    newStudents: Array<Omit<Student, 'id' | 'created_at'>>
+  ): Promise<{ inserted: Student[]; count: number }> {
+    if (!newStudents || newStudents.length === 0) {
+      return { inserted: [], count: 0 };
+    }
+
+    const existingStudents = await this.getStudentsByClassroom(classroomId);
+    const existingRolls = new Set(existingStudents.map(s => s.roll_number.trim().toLowerCase()));
+    const occupiedSeats = new Set(existingStudents.map(s => `${s.row_number}-${s.column_number}`));
+
+    const validToInsert: Array<Omit<Student, 'id' | 'created_at'>> = [];
+    for (const st of newStudents) {
+      const cleanRoll = st.roll_number.trim().toLowerCase();
+      const seatKey = `${st.row_number}-${st.column_number}`;
+      if (existingRolls.has(cleanRoll)) {
+        continue;
+      }
+      if (occupiedSeats.has(seatKey)) {
+        continue;
+      }
+      existingRolls.add(cleanRoll);
+      occupiedSeats.add(seatKey);
+      validToInsert.push({
+        ...st,
+        classroom_id: classroomId,
+        student_name: st.student_name.trim(),
+        roll_number: st.roll_number.trim().toUpperCase(),
+        branch: (st.branch || 'General').trim(),
+        gender: st.gender,
+        row_number: st.row_number,
+        column_number: st.column_number,
+        position_number: st.position_number
+      });
+    }
+
+    let insertedList: Student[] = [];
+
+    if (isSupabaseConfigured() && validToInsert.length > 0) {
+      try {
+        const client = getSupabase();
+        // Prepare base schema payload
+        const dbPayloads = validToInsert.map(s => ({
+          classroom_id: s.classroom_id,
+          student_name: s.student_name,
+          roll_number: s.roll_number,
+          branch: s.branch,
+          gender: s.gender,
+          row_number: s.row_number,
+          column_number: s.column_number,
+          position_number: s.position_number
+        }));
+
+        const { data, error } = await client
+          .from('students')
+          .insert(dbPayloads)
+          .select();
+
+        if (error) {
+          console.warn('Supabase bulk insert notice:', error.message);
+        } else if (data && Array.isArray(data)) {
+          insertedList = data.map((d, i) => ({
+            ...(d as Student),
+            section: validToInsert[i]?.section,
+            email: validToInsert[i]?.email,
+            mobile: validToInsert[i]?.mobile,
+            seat_id: `R${d.row_number}-C${d.column_number}`
+          }));
+        }
+      } catch (err) {
+        console.warn('Supabase bulkAssignStudents error, fallback active:', err);
+      }
+    }
+
+    // Fallback if Supabase was unavailable or returned empty
+    if (insertedList.length === 0 && validToInsert.length > 0) {
+      insertedList = validToInsert.map((s, idx) => ({
+        ...s,
+        id: `st-bulk-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        created_at: new Date().toISOString(),
+        seat_id: `R${s.row_number}-C${s.column_number}`
+      }));
+    }
+
+    // Keep localDb in sync
+    const currentAll = localDb.getStudents();
+    const newIds = new Set(insertedList.map(s => s.id));
+    const merged = [...currentAll.filter(s => !newIds.has(s.id)), ...insertedList];
+    localDb.setStudents(merged);
+
+    return { inserted: insertedList, count: insertedList.length };
+  },
+
   async updateStudent(id: string, updates: Partial<Student>): Promise<Student> {
     // If classroom_id, roll_number, or row/col changed, validate uniqueness
     if (updates.classroom_id) {

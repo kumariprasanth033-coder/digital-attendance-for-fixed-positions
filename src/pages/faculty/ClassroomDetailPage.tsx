@@ -6,6 +6,7 @@ import { Navbar } from '../../components/common/Navbar';
 import { SeatingMatrix } from '../../components/classroom/SeatingMatrix';
 import { StudentFormModal } from '../../components/classroom/StudentFormModal';
 import { CreateClassroomModal } from '../../components/classroom/CreateClassroomModal';
+import { BulkImportModal } from '../../components/classroom/BulkImportModal';
 import { 
   ArrowLeft, 
   CalendarCheck, 
@@ -14,6 +15,7 @@ import {
   Monitor, 
   Sparkles,
   Download,
+  Upload,
   Edit3,
   Trash2,
   AlertTriangle,
@@ -55,6 +57,9 @@ export const ClassroomDetailPage: React.FC = () => {
   const [showEditClassroomModal, setShowEditClassroomModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingClassroom, setDeletingClassroom] = useState(false);
+
+  // Bulk Student Import Modal state (CSV / Excel)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Success Notification banner
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -280,25 +285,37 @@ export const ClassroomDetailPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Quick Action Controls: Edit, Delete, Roster */}
+            {/* Quick Action Controls: Import, Edit, Delete, Roster */}
             <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
+                onClick={() => setBulkImportOpen(true)}
+                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload CSV / Excel</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowEditClassroomModal(true)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Edit3 className="w-3.5 h-3.5 text-slate-500" /> Edit Classroom
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Delete
               </button>
 
               <button
+                type="button"
                 onClick={downloadRosterCSV}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-slate-500" /> Export CSV
               </button>
@@ -422,15 +439,26 @@ export const ClassroomDetailPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Action: + Add Student */}
-              <button
-                type="button"
-                onClick={handleOpenAddStudent}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-xs self-start md:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Add Student</span>
-              </button>
+              {/* Action: + Add Student & Import Students */}
+              <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setBulkImportOpen(true)}
+                  className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-all flex items-center gap-2 shadow-2xs cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-indigo-600" />
+                  <span>Import Students (CSV / Excel)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenAddStudent}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Student</span>
+                </button>
+              </div>
             </div>
 
             {/* Controls: Search + Gender Filters [ All ] [ Boys ] [ Girls ] */}
@@ -598,8 +626,16 @@ export const ClassroomDetailPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setBulkImportOpen(true)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Upload CSV / Excel</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleOpenAddStudent}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ Add Student</span>
@@ -723,6 +759,23 @@ export const ClassroomDetailPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Bulk Student Import Modal (CSV & Excel) */}
+        <BulkImportModal
+          isOpen={bulkImportOpen}
+          onClose={() => setBulkImportOpen(false)}
+          classroom={classroom}
+          existingStudents={students}
+          onImportComplete={async () => {
+            await loadClassroomData();
+            showNotification('Students successfully imported and auto-assigned to seats!');
+          }}
+          onExpandClassroom={async (newRows, newCols) => {
+            await api.updateClassroom(classroom.id, { rows: newRows, columns: newCols, total_positions: newRows * newCols });
+            await loadClassroomData();
+            showNotification(`Classroom enlarged to ${newRows} Rows × ${newCols} Columns (${newRows * newCols} Seats).`);
+          }}
+        />
 
       </main>
     </div>
