@@ -56,7 +56,7 @@ export const AdminAnalyticsPage: React.FC = () => {
   const lowestSession = sortedSessions[sortedSessions.length - 1];
 
   const barChartData = sessions.slice(0, 8).reverse().map(s => ({
-    label: s.attendance_date.slice(5),
+    label: s.attendance_date ? (s.attendance_date.length > 5 ? s.attendance_date.slice(5) : s.attendance_date) : 'N/A',
     percentage: s.attendance_percentage || 0,
     present: s.present_count || 0,
     total: s.total_students || 0

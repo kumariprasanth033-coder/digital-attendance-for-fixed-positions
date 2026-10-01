@@ -27,6 +27,18 @@ export const LoginPage: React.FC = () => {
   const { login, resendConfirmationEmail, devConfirmAndLogin } = useAuth();
   const navigate = useNavigate();
 
+  // Sync role and default email if search query param changes
+  useEffect(() => {
+    const roleParam = searchParams.get('role');
+    if (roleParam === 'admin') {
+      setRole('admin');
+      setEmail('admin.portal@university.edu');
+    } else if (roleParam === 'faculty') {
+      setRole('faculty');
+      setEmail('ramesh.faculty@university.edu');
+    }
+  }, [searchParams]);
+
   // Check URL on mount for email confirmation redirect or verified param
   useEffect(() => {
     const isVerifiedParam = searchParams.get('verified') === 'true';

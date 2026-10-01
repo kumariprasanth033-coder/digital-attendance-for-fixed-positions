@@ -26,15 +26,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole }) 
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && role !== requiredRole) {
-    // If faculty tries to open /admin, redirect to faculty dashboard
-    if (role === 'faculty') {
-      return <Navigate to="/faculty/dashboard" replace />;
-    }
-    // If admin opens /faculty, redirect to admin dashboard
-    if (role === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />;
-    }
+  if (requiredRole === 'admin' && role !== 'admin') {
+    return <Navigate to="/faculty/dashboard" replace />;
   }
 
   return (

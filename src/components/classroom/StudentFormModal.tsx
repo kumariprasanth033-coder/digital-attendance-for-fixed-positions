@@ -103,15 +103,6 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     setConfirmDelete(false);
   }, [existingStudent, targetRow, targetCol, classroom, isOpen, defaultGender, existingStudents]);
 
-  if (!isOpen) return null;
-
-  const totalSeats = classroom.rows * classroom.columns;
-  const isClassroomFull = !existingStudent && existingStudents.length >= totalSeats;
-
-  // Auto-calculated position representation
-  const positionTag = `R${row}-C${col}`;
-  const positionNumber = (row - 1) * classroom.columns + col;
-
   const expectedZoneGender: StudentGender | null = React.useMemo(() => {
     const gc = classroom.gender_config;
     if (!gc) return null;
@@ -133,6 +124,15 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     }
     return null;
   }, [classroom.gender_config, row, col]);
+
+  if (!isOpen) return null;
+
+  const totalSeats = classroom.rows * classroom.columns;
+  const isClassroomFull = !existingStudent && existingStudents.length >= totalSeats;
+
+  // Auto-calculated position representation
+  const positionTag = `R${row}-C${col}`;
+  const positionNumber = (row - 1) * classroom.columns + col;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

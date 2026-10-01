@@ -11,6 +11,7 @@ import {
   FileSpreadsheet, 
   CheckCircle2, 
   AlertTriangle, 
+  AlertCircle,
   X, 
   Download, 
   Sparkles, 
@@ -47,6 +48,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const [customRows, setCustomRows] = useState(classroom.rows);
   const [customCols, setCustomCols] = useState(classroom.columns);
+  const [importError, setImportError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -79,7 +81,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
     } catch (err: unknown) {
       console.error('File parsing error:', err);
       const msg = err instanceof Error ? err.message : 'Unknown parsing error';
-      alert(`Failed to parse file: ${msg}. Please ensure it is a valid CSV or Excel (.xlsx) file.`);
+      setImportError(`Failed to parse file: ${msg}. Please ensure it is a valid CSV or Excel (.xlsx) file.`);
     } finally {
       setProcessing(false);
     }
@@ -195,7 +197,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
     );
 
     if (toImport.length === 0) {
-      alert('No valid students to import. Please review errors or assign missing genders.');
+      setImportError('No valid students to import. Please review errors or assign missing genders.');
       return;
     }
 
@@ -221,7 +223,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
     } catch (err: unknown) {
       console.error('Bulk import error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to import students';
-      alert(`Import error: ${msg}`);
+      setImportError(`Import error: ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -288,6 +290,22 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
+
+          {importError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{importError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportError(null)}
+                className="text-rose-500 hover:text-rose-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {/* Section 1: Drag & Drop Upload Zone */}
           <div

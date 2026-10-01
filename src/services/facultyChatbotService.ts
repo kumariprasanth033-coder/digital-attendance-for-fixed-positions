@@ -1,4 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { toSupabaseUUID } from '../lib/uuid';
 import { api, localDb } from './api';
 import { Classroom, Student, AttendanceSession, AttendanceRecord } from '../types';
 
@@ -40,13 +41,14 @@ export class FacultyChatbotService {
    * Enforces faculty security boundary and Row Level Security.
    */
   public static async getFacultyClassrooms(facultyId: string): Promise<Classroom[]> {
-    if (isSupabaseConfigured()) {
+    const sbFacultyId = toSupabaseUUID(facultyId);
+    if (isSupabaseConfigured() && sbFacultyId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('classrooms')
           .select('*')
-          .eq('faculty_id', facultyId)
+          .eq('faculty_id', sbFacultyId)
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
@@ -56,20 +58,21 @@ export class FacultyChatbotService {
         console.warn('Supabase getFacultyClassrooms error, using local:', e);
       }
     }
-    return localDb.getClassrooms().filter(c => c.faculty_id === facultyId);
+    return localDb.getClassrooms().filter(c => c.faculty_id === facultyId || (facultyId === 'faculty-demo-001' && c.faculty_id === 'a0000000-0000-0000-0000-000000000001'));
   }
 
   /**
    * Fetch real student records for a specific classroom from Supabase.
    */
   public static async getClassroomStudents(classroomId: string): Promise<Student[]> {
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(classroomId);
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('students')
           .select('*')
-          .eq('classroom_id', classroomId)
+          .eq('classroom_id', sbClassroomId)
           .order('position_number', { ascending: true });
 
         if (!error && data) {
@@ -79,7 +82,7 @@ export class FacultyChatbotService {
         console.warn('Supabase getClassroomStudents error, using local:', e);
       }
     }
-    return localDb.getStudents().filter(s => s.classroom_id === classroomId);
+    return localDb.getStudents().filter(s => s.classroom_id === classroomId || (classroomId === 'c0000000-0000-0000-0000-000000000001' && s.classroom_id === 'cls-aids-001'));
   }
 
   /**
@@ -210,14 +213,16 @@ export class FacultyChatbotService {
     let records: AttendanceRecord[] = [];
     let isLatestFallback = false;
 
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(classroomId);
+
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         // First try requested date
         const { data: sessList } = await client
           .from('attendance_sessions')
           .select('*')
-          .eq('classroom_id', classroomId)
+          .eq('classroom_id', sbClassroomId)
           .eq('attendance_date', dateStr)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -229,7 +234,7 @@ export class FacultyChatbotService {
           const { data: latestList } = await client
             .from('attendance_sessions')
             .select('*')
-            .eq('classroom_id', classroomId)
+            .eq('classroom_id', sbClassroomId)
             .order('attendance_date', { ascending: false })
             .limit(1);
 
@@ -321,13 +326,15 @@ export class FacultyChatbotService {
     const students = await this.getClassroomStudents(classroomId);
 
     let sessions: AttendanceSession[] = [];
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(classroomId);
+
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         const { data } = await client
           .from('attendance_sessions')
           .select('*')
-          .eq('classroom_id', classroomId);
+          .eq('classroom_id', sbClassroomId);
         if (data) sessions = data as AttendanceSession[];
       } catch {
         sessions = localDb.getSessions().filter(s => s.classroom_id === classroomId);
@@ -342,14 +349,15 @@ export class FacultyChatbotService {
 
     const sessionIds = sessions.map(s => s.id);
     let allRecords: AttendanceRecord[] = [];
+    const sbSessionIds = sessionIds.map(toSupabaseUUID).filter((id): id is string => Boolean(id));
 
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && sbSessionIds.length > 0) {
       try {
         const client = getSupabase();
         const { data } = await client
           .from('attendance_records')
           .select('*')
-          .in('session_id', sessionIds);
+          .in('session_id', sbSessionIds);
         if (data) allRecords = data as AttendanceRecord[];
       } catch {
         allRecords = localDb.getRecords().filter(r => sessionIds.includes(r.session_id));

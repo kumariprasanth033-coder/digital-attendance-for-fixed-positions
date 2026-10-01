@@ -1,4 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { isUUID, generateUUID, toSupabaseUUID } from '../lib/uuid';
 import { 
   Classroom, 
   Student, 
@@ -225,8 +226,22 @@ class LocalStorageDatabase {
     this.setItem('profiles', profiles);
   }
 
+  getDeletedClassrooms(): string[] {
+    return this.getItem<string[]>('deleted_classrooms', []);
+  }
+
+  addDeletedClassrooms(ids: string[]): void {
+    const current = new Set(this.getDeletedClassrooms());
+    ids.forEach(id => {
+      if (id) current.add(id);
+    });
+    this.setItem('deleted_classrooms', Array.from(current));
+  }
+
   getClassrooms(): Classroom[] {
-    return this.getItem<Classroom[]>('classrooms', SEED_CLASSROOMS);
+    const deleted = new Set(this.getDeletedClassrooms());
+    const list = this.getItem<Classroom[]>('classrooms', SEED_CLASSROOMS);
+    return list.filter(c => !deleted.has(c.id));
   }
   setClassrooms(classrooms: Classroom[]): void {
     this.setItem('classrooms', classrooms);
@@ -281,6 +296,8 @@ export const api = {
   // CLASSROOMS CRUD
   // --------------------------------------------------------------------------
   async getClassrooms(facultyId?: string): Promise<Classroom[]> {
+    const deleted = new Set(localDb.getDeletedClassrooms());
+
     if (isSupabaseConfigured()) {
       try {
         const client = getSupabase();
@@ -288,7 +305,10 @@ export const api = {
           id, faculty_id, class_name, rows, columns, total_positions, created_at, updated_at
         `);
         if (facultyId) {
-          query = query.eq('faculty_id', facultyId);
+          const sbFacultyId = toSupabaseUUID(facultyId);
+          if (sbFacultyId) {
+            query = query.eq('faculty_id', sbFacultyId);
+          }
         }
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
@@ -296,6 +316,7 @@ export const api = {
         // Enrich with student count
         const classrooms: Classroom[] = [];
         for (const item of (data || [])) {
+          if (deleted.has(item.id)) continue;
           const { count } = await client
             .from('students')
             .select('*', { count: 'exact', head: true })
@@ -307,7 +328,10 @@ export const api = {
         }
 
         if (classrooms.length > 0) {
-          return classrooms;
+          const localClassrooms = localDb.getClassrooms().filter(c => !deleted.has(c.id));
+          const sbIds = new Set(classrooms.map(c => c.id));
+          const extra = localClassrooms.filter(c => !sbIds.has(c.id));
+          return [...classrooms, ...extra];
         }
       } catch (err) {
         console.warn('Supabase query error, using local database:', err);
@@ -315,7 +339,7 @@ export const api = {
     }
 
     // Local fallback: Return classrooms for this faculty or include demo classrooms
-    const all = localDb.getClassrooms();
+    const all = localDb.getClassrooms().filter(c => !deleted.has(c.id));
     const students = localDb.getStudents();
     const sessions = localDb.getSessions();
 
@@ -337,19 +361,25 @@ export const api = {
   },
 
   async getClassroomById(id: string): Promise<Classroom | null> {
-    if (isSupabaseConfigured()) {
+    const deleted = new Set(localDb.getDeletedClassrooms());
+    if (deleted.has(id)) return null;
+
+    const sbClassroomId = toSupabaseUUID(id);
+    if (sbClassroomId && deleted.has(sbClassroomId)) return null;
+
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('classrooms')
           .select('*')
-          .eq('id', id)
+          .eq('id', sbClassroomId)
           .maybeSingle();
         if (!error && data) {
           const { count } = await client
             .from('students')
             .select('*', { count: 'exact', head: true })
-            .eq('classroom_id', id);
+            .eq('classroom_id', sbClassroomId);
           return {
             ...data,
             student_count: count ?? 0
@@ -359,23 +389,13 @@ export const api = {
         console.warn('Supabase getClassroomById error:', err);
       }
     }
-    const all = localDb.getClassrooms();
+    const all = localDb.getClassrooms().filter(c => !deleted.has(c.id));
     const found = all.find(c => c.id === id || (id.startsWith('c0000') && c.id === 'cls-aids-001') || (id === 'cls-aids-001' && c.id.startsWith('c0000')));
     if (!found) {
-      // Fallback default cinema classroom
-      return {
-        id: id || 'cls-aids-001',
-        faculty_id: 'faculty-demo-001',
-        class_name: 'AI & DS - Section A',
-        rows: 4,
-        columns: 4,
-        total_positions: 16,
-        created_at: new Date().toISOString(),
-        student_count: 16
-      };
+      return null;
     }
-    const students = localDb.getStudents().filter(s => s.classroom_id === found.id || s.classroom_id === 'cls-aids-001');
-    return { ...found, student_count: students.length > 0 ? students.length : 16 };
+    const students = localDb.getStudents().filter(s => s.classroom_id === found.id || (found.id.startsWith('c0000') && s.classroom_id === 'cls-aids-001'));
+    return { ...found, student_count: students.length > 0 ? students.length : (found.rows * found.columns) };
   },
 
   async createClassroom(payload: { 
@@ -393,12 +413,13 @@ export const api = {
     const total_positions = payload.rows * payload.columns;
 
     const computedBranch = payload.branch || (payload.branches && payload.branches.length > 0 ? payload.branches.join(' + ') : undefined);
+    const sbFacultyId = toSupabaseUUID(payload.faculty_id);
 
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && sbFacultyId) {
       try {
         const client = getSupabase();
         const insertPayload: Record<string, unknown> = {
-          faculty_id: payload.faculty_id,
+          faculty_id: sbFacultyId,
           class_name: payload.class_name.trim(),
           rows: payload.rows,
           columns: payload.columns
@@ -410,7 +431,7 @@ export const api = {
           .single();
         if (!error && data) {
           await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns}${computedBranch ? `, Branches: ${computedBranch}` : ''})`);
-          return {
+          const created: Classroom = {
             ...data,
             branch: computedBranch,
             branches: payload.branches,
@@ -418,8 +439,12 @@ export const api = {
             seating_division_mode: payload.seating_division_mode,
             gender_config: payload.gender_config,
             enforce_seating_rule: payload.enforce_seating_rule,
-            total_positions
-          } as Classroom;
+            total_positions,
+            student_count: 0
+          };
+          const current = localDb.getClassrooms();
+          localDb.setClassrooms([created, ...current]);
+          return created;
         }
       } catch (err) {
         console.warn('Supabase createClassroom error, falling back:', err);
@@ -427,7 +452,7 @@ export const api = {
     }
 
     const newClassroom: Classroom = {
-      id: `cls-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: generateUUID(),
       faculty_id: payload.faculty_id,
       class_name: payload.class_name.trim(),
       rows: payload.rows,
@@ -450,13 +475,14 @@ export const api = {
   },
 
   async updateClassroom(id: string, updates: Partial<Classroom>): Promise<Classroom> {
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(id);
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('classrooms')
           .update(updates)
-          .eq('id', id)
+          .eq('id', sbClassroomId)
           .select()
           .single();
         if (error) throw error;
@@ -476,37 +502,62 @@ export const api = {
   },
 
   async deleteClassroom(id: string, userId?: string): Promise<boolean> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        const { error } = await client.from('classrooms').delete().eq('id', id);
-        if (error) throw error;
-        if (userId) {
-          await this.logActivity(userId, 'DELETE_CLASSROOM', `Deleted classroom ID ${id}`);
-        }
-        return true;
-      } catch (err) {
-        console.warn('Supabase deleteClassroom error:', err);
-      }
+    const sbClassroomId = toSupabaseUUID(id);
+    const targetIds = new Set<string>([id]);
+    if (sbClassroomId) targetIds.add(sbClassroomId);
+
+    // Explicit alias resolution for demo classrooms so both variants are deleted
+    if (id === 'cls-cse-002' || id === 'c0000000-0000-0000-0000-000000000002') {
+      targetIds.add('cls-cse-002');
+      targetIds.add('c0000000-0000-0000-0000-000000000002');
+    }
+    if (id === 'cls-aids-001' || id === 'c0000000-0000-0000-0000-000000000001') {
+      targetIds.add('cls-aids-001');
+      targetIds.add('c0000000-0000-0000-0000-000000000001');
     }
 
-    // Delete cascade locally
-    const classrooms = localDb.getClassrooms().filter(c => c.id !== id);
-    localDb.setClassrooms(classrooms);
+    const idsArray = Array.from(targetIds);
 
-    const students = localDb.getStudents().filter(s => s.classroom_id !== id);
-    localDb.setStudents(students);
+    // 1. Mark as permanently deleted in localDb tombstone so it can NEVER be loaded or resurrected
+    localDb.addDeletedClassrooms(idsArray);
 
-    const sessionsToDelete = localDb.getSessions().filter(s => s.classroom_id === id).map(s => s.id);
-    const sessions = localDb.getSessions().filter(s => s.classroom_id !== id);
-    localDb.setSessions(sessions);
+    // 2. Cascade delete from local storage: classrooms
+    const remainingClassrooms = localDb.getClassrooms().filter(c => !targetIds.has(c.id));
+    localDb.setClassrooms(remainingClassrooms);
 
-    const records = localDb.getRecords().filter(r => !sessionsToDelete.includes(r.session_id));
-    localDb.setRecords(records);
+    // 3. Cascade delete from local storage: students
+    const remainingStudents = localDb.getStudents().filter(s => !targetIds.has(s.classroom_id));
+    localDb.setStudents(remainingStudents);
+
+    // 4. Cascade delete from local storage: sessions & records
+    const sessionsToDelete = localDb.getSessions().filter(s => targetIds.has(s.classroom_id)).map(s => s.id);
+    const remainingSessions = localDb.getSessions().filter(s => !targetIds.has(s.classroom_id));
+    localDb.setSessions(remainingSessions);
+
+    const remainingRecords = localDb.getRecords().filter(r => !sessionsToDelete.includes(r.session_id));
+    localDb.setRecords(remainingRecords);
+
+    // 5. Delete from Supabase if configured (cascade dependent records first)
+    if (isSupabaseConfigured()) {
+      for (const tId of idsArray) {
+        const sbId = toSupabaseUUID(tId);
+        if (sbId) {
+          try {
+            const client = getSupabase();
+            await client.from('attendance_sessions').delete().eq('classroom_id', sbId);
+            await client.from('students').delete().eq('classroom_id', sbId);
+            await client.from('classrooms').delete().eq('id', sbId);
+          } catch (err) {
+            console.warn('Supabase cascade deleteClassroom error:', err);
+          }
+        }
+      }
+    }
 
     if (userId) {
       await this.logActivity(userId, 'DELETE_CLASSROOM', `Deleted classroom ID: ${id}`);
     }
+
     return true;
   },
 
@@ -514,13 +565,14 @@ export const api = {
   // STUDENTS CRUD & FIXED POSITION MANAGEMENT
   // --------------------------------------------------------------------------
   async getStudentsByClassroom(classroomId: string): Promise<Student[]> {
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(classroomId);
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('students')
           .select('*')
-          .eq('classroom_id', classroomId)
+          .eq('classroom_id', sbClassroomId)
           .order('row_number', { ascending: true })
           .order('column_number', { ascending: true });
         
@@ -567,8 +619,11 @@ export const api = {
           .from('students')
           .select('*')
           .order('student_name', { ascending: true });
-        if (!error && Array.isArray(data)) {
-          return data as Student[];
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const localStudents = localDb.getStudents();
+          const sbIds = new Set(data.map(s => s.id));
+          const extra = localStudents.filter(s => !sbIds.has(s.id));
+          return [...(data as Student[]), ...extra];
         }
       } catch (err) {
         console.warn('Supabase getAllStudents error:', err);
@@ -608,19 +663,29 @@ export const api = {
       position_number: student.position_number || ((student.row_number - 1) * 4 + student.column_number)
     };
 
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(student.classroom_id);
+
+    if (isSupabaseConfigured() && sbClassroomId) {
       try {
         const client = getSupabase();
+        const dbPayload = {
+          ...payload,
+          classroom_id: sbClassroomId
+        };
         const { data, error } = await client
           .from('students')
-          .insert([payload])
+          .insert([dbPayload])
           .select()
           .single();
         if (error) {
-          console.error('Supabase assignStudent insert error:', error);
-          throw error;
-        }
-        if (data) {
+          if (error.message?.includes('unique_roll_per_classroom') || error.message?.includes('duplicate key')) {
+            throw new Error(`Roll number "${student.roll_number}" already exists in this classroom.`);
+          }
+          if (error.message?.includes('unique_seat_per_classroom') || error.message?.includes('unique_position_per_classroom')) {
+            throw new Error(`Position Row ${student.row_number}, Column ${student.column_number} is already occupied.`);
+          }
+          console.warn('Supabase assignStudent notice (falling back locally):', error.message);
+        } else if (data) {
           // Keep localDb in sync
           const current = localDb.getStudents();
           localDb.setStudents([...current.filter(s => s.id !== data.id), data as Student]);
@@ -628,19 +693,16 @@ export const api = {
         }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('unique_roll_per_classroom') || errMsg.includes('duplicate key')) {
-          throw new Error(`Roll number "${student.roll_number}" already exists in this classroom.`);
+        if (errMsg.includes('already exists') || errMsg.includes('already occupied')) {
+          throw err;
         }
-        if (errMsg.includes('unique_seat_per_classroom')) {
-          throw new Error(`Position Row ${student.row_number}, Column ${student.column_number} is already occupied.`);
-        }
-        console.warn('Supabase assignStudent error, saving locally:', err);
+        console.warn('Supabase assignStudent fallback active:', err);
       }
     }
 
     const newStudent: Student = {
       ...payload,
-      id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       created_at: new Date().toISOString()
     };
 
@@ -687,13 +749,14 @@ export const api = {
     }
 
     let insertedList: Student[] = [];
+    const sbClassroomId = toSupabaseUUID(classroomId);
 
-    if (isSupabaseConfigured() && validToInsert.length > 0) {
+    if (isSupabaseConfigured() && sbClassroomId && validToInsert.length > 0) {
       try {
         const client = getSupabase();
-        // Prepare base schema payload
+        // Prepare base schema payload with valid UUID
         const dbPayloads = validToInsert.map(s => ({
-          classroom_id: s.classroom_id,
+          classroom_id: sbClassroomId,
           student_name: s.student_name,
           roll_number: s.roll_number,
           branch: s.branch,
@@ -726,9 +789,9 @@ export const api = {
 
     // Fallback if Supabase was unavailable or returned empty
     if (insertedList.length === 0 && validToInsert.length > 0) {
-      insertedList = validToInsert.map((s, idx) => ({
+      insertedList = validToInsert.map((s) => ({
         ...s,
-        id: `st-bulk-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        id: generateUUID(),
         created_at: new Date().toISOString(),
         seat_id: `R${s.row_number}-C${s.column_number}`
       }));
@@ -765,17 +828,25 @@ export const api = {
       }
     }
 
-    if (isSupabaseConfigured()) {
+    const sbStudentId = toSupabaseUUID(id);
+    if (isSupabaseConfigured() && sbStudentId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
           .from('students')
           .update(updates)
-          .eq('id', id)
+          .eq('id', sbStudentId)
           .select()
           .single();
-        if (error) throw error;
-        if (data) {
+        if (error) {
+          if (error.message?.includes('unique_roll_per_classroom') || error.message?.includes('duplicate key')) {
+            throw new Error(`Roll number already exists in this classroom.`);
+          }
+          if (error.message?.includes('unique_seat_per_classroom') || error.message?.includes('unique_position_per_classroom')) {
+            throw new Error(`Seat Position is already occupied.`);
+          }
+          console.warn('Supabase updateStudent notice (falling back locally):', error.message);
+        } else if (data) {
           const current = localDb.getStudents();
           const idx = current.findIndex(s => s.id === id);
           if (idx !== -1) {
@@ -786,13 +857,10 @@ export const api = {
         }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('unique_roll_per_classroom') || errMsg.includes('duplicate key')) {
-          throw new Error(`Roll number already exists in this classroom.`);
+        if (errMsg.includes('already exists') || errMsg.includes('already occupied')) {
+          throw err;
         }
-        if (errMsg.includes('unique_seat_per_classroom')) {
-          throw new Error(`Seat Position is already occupied.`);
-        }
-        console.warn('Supabase updateStudent error:', err);
+        console.warn('Supabase updateStudent fallback active:', err);
       }
     }
 
@@ -806,11 +874,12 @@ export const api = {
   },
 
   async removeStudent(id: string): Promise<boolean> {
-    if (isSupabaseConfigured()) {
+    const sbStudentId = toSupabaseUUID(id);
+    if (isSupabaseConfigured() && sbStudentId) {
       try {
         const client = getSupabase();
-        const { error } = await client.from('students').delete().eq('id', id);
-        if (error) throw error;
+        const { error } = await client.from('students').delete().eq('id', sbStudentId);
+        if (error) console.warn('Supabase removeStudent notice:', error.message);
       } catch (err) {
         console.warn('Supabase removeStudent error:', err);
       }
@@ -856,15 +925,18 @@ export const api = {
       ? Math.round((present_count / total_students) * 1000) / 10 
       : 0;
 
-    if (isSupabaseConfigured()) {
+    const sbClassroomId = toSupabaseUUID(payload.classroom_id);
+    const sbFacultyId = toSupabaseUUID(payload.faculty_id);
+
+    if (isSupabaseConfigured() && sbClassroomId && sbFacultyId) {
       try {
         const client = getSupabase();
         // Insert session
         const { data: sessionData, error: sessionErr } = await client
           .from('attendance_sessions')
           .insert([{
-            classroom_id: payload.classroom_id,
-            faculty_id: payload.faculty_id,
+            classroom_id: sbClassroomId,
+            faculty_id: sbFacultyId,
             attendance_date: payload.attendance_date,
             start_time: payload.start_time,
             notes: payload.notes || null
@@ -875,17 +947,21 @@ export const api = {
         if (sessionErr) throw sessionErr;
 
         // Insert batch records
-        const recordsPayload = recordsToInsert.map(r => ({
-          session_id: sessionData.id,
-          student_id: r.student_id,
-          status: r.status
-        }));
+        const recordsPayload = recordsToInsert
+          .map(r => ({
+            session_id: sessionData.id,
+            student_id: toSupabaseUUID(r.student_id),
+            status: r.status
+          }))
+          .filter((r): r is { session_id: string; student_id: string; status: 'Present' | 'Absent' } => Boolean(r.student_id));
 
-        const { error: recordsErr } = await client
-          .from('attendance_records')
-          .insert(recordsPayload);
+        if (recordsPayload.length > 0) {
+          const { error: recordsErr } = await client
+            .from('attendance_records')
+            .insert(recordsPayload);
 
-        if (recordsErr) throw recordsErr;
+          if (recordsErr) console.warn('Supabase records insert notice:', recordsErr.message);
+        }
 
         await this.logActivity(
           payload.faculty_id, 
@@ -905,7 +981,7 @@ export const api = {
       }
     }
 
-    const sessionId = `ses-${Date.now()}`;
+    const sessionId = generateUUID();
     const newSession: AttendanceSession = {
       id: sessionId,
       classroom_id: payload.classroom_id,
@@ -962,8 +1038,14 @@ export const api = {
           classrooms(class_name)
         `);
 
-        if (filter?.faculty_id) query = query.eq('faculty_id', filter.faculty_id);
-        if (filter?.classroom_id) query = query.eq('classroom_id', filter.classroom_id);
+        if (filter?.faculty_id) {
+          const sbFac = toSupabaseUUID(filter.faculty_id);
+          if (sbFac) query = query.eq('faculty_id', sbFac);
+        }
+        if (filter?.classroom_id) {
+          const sbCls = toSupabaseUUID(filter.classroom_id);
+          if (sbCls) query = query.eq('classroom_id', sbCls);
+        }
         if (filter?.date) query = query.eq('attendance_date', filter.date);
 
         const { data, error } = await query.order('attendance_date', { ascending: false });
@@ -997,7 +1079,15 @@ export const api = {
             attendance_percentage: pct
           });
         }
-        return enriched;
+        if (enriched.length > 0) {
+          const localSessions = localDb.getSessions();
+          const sbIds = new Set(enriched.map(s => s.id));
+          let merged = [...enriched, ...localSessions.filter(s => !sbIds.has(s.id))];
+          if (filter?.faculty_id) merged = merged.filter(s => s.faculty_id === filter.faculty_id || (filter.faculty_id === 'faculty-demo-001' && s.faculty_id === 'a0000000-0000-0000-0000-000000000001'));
+          if (filter?.classroom_id) merged = merged.filter(s => s.classroom_id === filter.classroom_id);
+          if (filter?.date) merged = merged.filter(s => s.attendance_date === filter.date);
+          return merged;
+        }
       } catch (err) {
         console.warn('Supabase getAttendanceSessions error:', err);
       }
@@ -1031,7 +1121,8 @@ export const api = {
   },
 
   async getSessionRecords(sessionId: string): Promise<AttendanceRecord[]> {
-    if (isSupabaseConfigured()) {
+    const sbSessionId = toSupabaseUUID(sessionId);
+    if (isSupabaseConfigured() && sbSessionId) {
       try {
         const client = getSupabase();
         const { data, error } = await client
@@ -1040,25 +1131,26 @@ export const api = {
             id, session_id, student_id, status, marked_at,
             students(student_name, roll_number, branch, gender, row_number, column_number, position_number)
           `)
-          .eq('session_id', sessionId);
-        if (error) throw error;
-        return (data || []).map(r => {
-          const st = r.students as unknown as Student;
-          return {
-            id: r.id,
-            session_id: r.session_id,
-            student_id: r.student_id,
-            status: r.status,
-            marked_at: r.marked_at,
-            student_name: st?.student_name,
-            roll_number: st?.roll_number,
-            branch: st?.branch,
-            gender: st?.gender,
-            row_number: st?.row_number,
-            column_number: st?.column_number,
-            position_number: st?.position_number
-          };
-        });
+          .eq('session_id', sbSessionId);
+        if (!error && data) {
+          return (data || []).map(r => {
+            const st = r.students as unknown as Student;
+            return {
+              id: r.id,
+              session_id: r.session_id,
+              student_id: r.student_id,
+              status: r.status,
+              marked_at: r.marked_at,
+              student_name: st?.student_name,
+              roll_number: st?.roll_number,
+              branch: st?.branch,
+              gender: st?.gender,
+              row_number: st?.row_number,
+              column_number: st?.column_number,
+              position_number: st?.position_number
+            };
+          });
+        }
       } catch (err) {
         console.warn('Supabase getSessionRecords error:', err);
       }
@@ -1091,13 +1183,15 @@ export const api = {
     const cls = await this.getClassroomById(classroomId);
 
     let allRecords: AttendanceRecord[] = [];
-    if (isSupabaseConfigured() && sessionIds.length > 0) {
+    const sbSessionIds = sessionIds.map(toSupabaseUUID).filter((id): id is string => Boolean(id));
+
+    if (isSupabaseConfigured() && sbSessionIds.length > 0) {
       try {
         const client = getSupabase();
         const { data } = await client
           .from('attendance_records')
           .select('*')
-          .in('session_id', sessionIds);
+          .in('session_id', sbSessionIds);
         allRecords = data || [];
       } catch {
         allRecords = localDb.getRecords().filter(r => sessionIds.includes(r.session_id));
@@ -1167,7 +1261,12 @@ export const api = {
         const client = getSupabase();
         const { data, error } = await client.from('profiles').select('*').order('created_at', { ascending: false });
         if (error) throw error;
-        return data as Profile[];
+        if (data && data.length > 0) {
+          const localProfiles = localDb.getProfiles();
+          const sbIds = new Set(data.map(p => p.id));
+          const extra = localProfiles.filter(p => !sbIds.has(p.id));
+          return [...(data as Profile[]), ...extra];
+        }
       } catch (err) {
         console.warn('Supabase getProfiles error:', err);
       }
@@ -1224,7 +1323,7 @@ export const api = {
     try {
       const logs = localDb.getLogs();
       const newLog: ActivityLog = {
-        id: `log-${Date.now()}`,
+        id: generateUUID(),
         user_id: userId,
         action,
         description,

@@ -35,11 +35,6 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
   const location = useLocation();
   const params = useParams<{ id?: string }>();
 
-  // Only render for authenticated faculty
-  if (!user || role !== 'faculty') {
-    return null;
-  }
-
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -49,7 +44,7 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
 
   // Conversation context & message history
   const [context, setContext] = useState<ChatbotConversationContext>({
-    facultyId: user.id
+    facultyId: user?.id || ''
   });
 
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -69,8 +64,17 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sync faculty ID if user changes
+  useEffect(() => {
+    if (user?.id) {
+      setContext(prev => ({ ...prev, facultyId: user.id }));
+    }
+  }, [user?.id]);
+
   // Load faculty's classrooms
   useEffect(() => {
+    if (!user || role !== 'faculty') return;
+
     const loadClassrooms = async () => {
       try {
         const clsList = await FacultyChatbotService.getFacultyClassrooms(user.id);
@@ -81,7 +85,7 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
           const matched = clsList.find(c => c.id === currentId);
           const activeId = matched ? matched.id : clsList[0].id;
           setSelectedClassroomId(activeId);
-          setContext(prev => ({ ...prev, currentClassroomId: activeId, lastClassroomId: activeId }));
+          setContext(prev => ({ ...prev, facultyId: user.id, currentClassroomId: activeId, lastClassroomId: activeId }));
         }
       } catch (e) {
         console.warn('Error loading classrooms for chatbot widget:', e);
@@ -89,7 +93,7 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
     };
 
     loadClassrooms();
-  }, [user.id, params.id, currentClassroom?.id]);
+  }, [user?.id, role, params.id, currentClassroom?.id]);
 
   // Sync selected classroom if prop changes
   useEffect(() => {
@@ -115,6 +119,8 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
 
   // Global listener to open chat from any component or button
   useEffect(() => {
+    if (!user || role !== 'faculty') return;
+
     const handleOpen = (e: Event) => {
       const customEvent = e as CustomEvent<{ query?: string }>;
       setIsOpen(true);
@@ -124,11 +130,11 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
     };
     window.addEventListener('open-faculty-chat', handleOpen);
     return () => window.removeEventListener('open-faculty-chat', handleOpen);
-  }, [selectedClassroomId, user.id]);
+  }, [selectedClassroomId, user?.id, role]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const promptText = (textToSend || input).trim();
-    if (!promptText || loading) return;
+    if (!promptText || loading || !user) return;
 
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -200,7 +206,9 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
         ]
       }
     ]);
-    setContext({ facultyId: user.id, currentClassroomId: selectedClassroomId });
+    if (user?.id) {
+      setContext({ facultyId: user.id, currentClassroomId: selectedClassroomId });
+    }
   };
 
   const selectedClassroom = classrooms.find(c => c.id === selectedClassroomId);
@@ -313,6 +321,11 @@ export const FacultyChatWidget: React.FC<FacultyChatWidgetProps> = ({ currentCla
       return part;
     });
   };
+
+  // Only render UI for authenticated faculty users
+  if (!user || role !== 'faculty') {
+    return null;
+  }
 
   return (
     <>

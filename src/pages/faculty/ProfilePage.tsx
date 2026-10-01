@@ -14,6 +14,7 @@ export const ProfilePage: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // Delete account confirmation modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -33,8 +34,9 @@ export const ProfilePage: React.FC = () => {
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError(null);
     if (newPassword.length < 6) {
-      alert('Password must be at least 6 characters.');
+      setPasswordError('Password must be at least 6 characters.');
       return;
     }
     setPasswordSuccess(true);
@@ -149,6 +151,12 @@ export const ProfilePage: React.FC = () => {
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Password updated securely in auth provider.</span>
+            </div>
+          )}
+
+          {passwordError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+              <span>{passwordError}</span>
             </div>
           )}
 

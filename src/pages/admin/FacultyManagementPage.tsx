@@ -76,10 +76,10 @@ export const FacultyManagementPage: React.FC = () => {
   });
 
   // Selected faculty stats
-  const facultyClassrooms = selectedFaculty ? classrooms.filter(c => c.faculty_id === selectedFaculty.id) : [];
+  const facultyClassrooms = selectedFaculty ? classrooms.filter(c => c.faculty_id === selectedFaculty.id || (selectedFaculty.id === 'faculty-demo-001' && c.faculty_id === 'a0000000-0000-0000-0000-000000000001') || (selectedFaculty.id === 'a0000000-0000-0000-0000-000000000001' && c.faculty_id === 'faculty-demo-001')) : [];
   const facultyClassroomIds = facultyClassrooms.map(c => c.id);
-  const facultyStudents = students.filter(s => facultyClassroomIds.includes(s.classroom_id));
-  const facultySessions = sessions.filter(s => s.faculty_id === selectedFaculty?.id);
+  const facultyStudents = students.filter(s => facultyClassroomIds.includes(s.classroom_id) || (facultyClassroomIds.includes('c0000000-0000-0000-0000-000000000001') && s.classroom_id === 'cls-aids-001') || (facultyClassroomIds.includes('cls-aids-001') && s.classroom_id === 'c0000000-0000-0000-0000-000000000001'));
+  const facultySessions = sessions.filter(s => s.faculty_id === selectedFaculty?.id || (selectedFaculty?.id === 'faculty-demo-001' && s.faculty_id === 'a0000000-0000-0000-0000-000000000001') || (selectedFaculty?.id === 'a0000000-0000-0000-0000-000000000001' && s.faculty_id === 'faculty-demo-001'));
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -149,10 +149,10 @@ export const FacultyManagementPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
                   {filteredFaculty.map(f => {
-                    const fClassrooms = classrooms.filter(c => c.faculty_id === f.id);
+                    const fClassrooms = classrooms.filter(c => c.faculty_id === f.id || (f.id === 'faculty-demo-001' && c.faculty_id === 'a0000000-0000-0000-0000-000000000001') || (f.id === 'a0000000-0000-0000-0000-000000000001' && c.faculty_id === 'faculty-demo-001'));
                     const fClassroomIds = fClassrooms.map(c => c.id);
-                    const fStudents = students.filter(s => fClassroomIds.includes(s.classroom_id));
-                    const fSessions = sessions.filter(s => s.faculty_id === f.id);
+                    const fStudents = students.filter(s => fClassroomIds.includes(s.classroom_id) || (fClassroomIds.includes('c0000000-0000-0000-0000-000000000001') && s.classroom_id === 'cls-aids-001') || (fClassroomIds.includes('cls-aids-001') && s.classroom_id === 'c0000000-0000-0000-0000-000000000001'));
+                    const fSessions = sessions.filter(s => s.faculty_id === f.id || (f.id === 'faculty-demo-001' && s.faculty_id === 'a0000000-0000-0000-0000-000000000001') || (f.id === 'a0000000-0000-0000-0000-000000000001' && s.faculty_id === 'faculty-demo-001'));
 
                     return (
                       <tr key={f.id} className="hover:bg-slate-50/70 transition-colors">
