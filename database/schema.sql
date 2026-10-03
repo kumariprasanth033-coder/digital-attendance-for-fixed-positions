@@ -29,6 +29,18 @@ CREATE TABLE IF NOT EXISTS public.classrooms (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 2.1 SEATS TABLE (Fixed Classroom Positions)
+CREATE TABLE IF NOT EXISTS public.seats (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    classroom_id UUID NOT NULL REFERENCES public.classrooms(id) ON DELETE CASCADE,
+    row_number INTEGER NOT NULL CHECK (row_number > 0),
+    column_number INTEGER NOT NULL CHECK (column_number > 0),
+    position_number INTEGER NOT NULL CHECK (position_number > 0),
+    seat_code TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT unique_seat_position UNIQUE (classroom_id, row_number, column_number)
+);
+
 -- 3. STUDENTS TABLE (Fixed Classroom Positions)
 CREATE TABLE IF NOT EXISTS public.students (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -195,6 +207,7 @@ FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.classrooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.seats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
@@ -236,6 +249,27 @@ CREATE POLICY "Faculty can update own classrooms"
 CREATE POLICY "Faculty can delete own classrooms"
     ON public.classrooms FOR DELETE
     USING (auth.uid() = faculty_id OR public.is_admin());
+
+-- Seats Policies
+CREATE POLICY "Users can view seats in their classrooms"
+    ON public.seats FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.classrooms c
+            WHERE c.id = seats.classroom_id
+            AND (c.faculty_id = auth.uid() OR public.is_admin())
+        )
+    );
+
+CREATE POLICY "Faculty can manage seats in their classrooms"
+    ON public.seats FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.classrooms c
+            WHERE c.id = seats.classroom_id
+            AND (c.faculty_id = auth.uid() OR public.is_admin())
+        )
+    );
 
 -- Students Policies
 CREATE POLICY "Users can view students in their classrooms"

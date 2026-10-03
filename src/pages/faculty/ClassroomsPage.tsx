@@ -17,10 +17,11 @@ import {
 } from 'lucide-react';
 
 export const ClassroomsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editTarget, setEditTarget] = useState<Classroom | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Classroom | null>(null);
@@ -30,10 +31,12 @@ export const ClassroomsPage: React.FC = () => {
     if (!user) return;
     try {
       setLoading(true);
-      const data = await api.getClassrooms(user.id);
+      setLoadError(null);
+      const data = await api.getClassrooms(role === 'admin' ? undefined : user.id);
       setClassrooms(data);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load classrooms:', err);
+      setLoadError(err instanceof Error ? err.message : 'Unable to load classroom data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -41,6 +44,22 @@ export const ClassroomsPage: React.FC = () => {
 
   useEffect(() => {
     loadClassrooms();
+  }, [user]);
+
+  useEffect(() => {
+    const unsubscribe = api.subscribeToUpdates((event) => {
+      if (
+        event.type === 'CLASSROOM_CREATED' ||
+        event.type === 'CLASSROOM_UPDATED' ||
+        event.type === 'CLASSROOM_DELETED' ||
+        event.type === 'STUDENT_ASSIGNED' ||
+        event.type === 'STUDENTS_BULK_IMPORTED' ||
+        event.type === 'STUDENT_REMOVED'
+      ) {
+        loadClassrooms();
+      }
+    });
+    return unsubscribe;
   }, [user]);
 
   const handleCreate = async (data: {
@@ -131,8 +150,27 @@ export const ClassroomsPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Classroom Cards Grid */}
-        {classrooms.length === 0 ? (
+        {/* Loading / Error / Empty / Grid */}
+        {loading ? (
+          <div className="py-24 text-center">
+            <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs text-slate-500">Loading classrooms from database...</p>
+          </div>
+        ) : loadError ? (
+          <div className="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-md mx-auto space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">Unable to load classrooms</h3>
+            <p className="text-xs text-slate-500">{loadError}</p>
+            <button
+              onClick={loadClassrooms}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+            >
+              Please try again
+            </button>
+          </div>
+        ) : classrooms.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-16 text-center">
             <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
               <LayoutGrid className="w-6 h-6" />

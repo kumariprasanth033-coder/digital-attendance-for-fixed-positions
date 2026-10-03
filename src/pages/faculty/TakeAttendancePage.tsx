@@ -36,6 +36,7 @@ export const TakeAttendancePage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [filter, setFilter] = useState<AttendanceFilter>('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Attendance state: Default is 'Present' for all students
   const [marks, setMarks] = useState<Record<string, MarkState>>({});
@@ -77,6 +78,7 @@ export const TakeAttendancePage: React.FC = () => {
       if (!id) return;
       try {
         setLoading(true);
+        setLoadError(null);
         const cls = await api.getClassroomById(id);
         if (!cls) {
           navigate('/faculty/classrooms');
@@ -98,8 +100,9 @@ export const TakeAttendancePage: React.FC = () => {
         // Set live current time
         const now = new Date();
         setStartTime(now.toTimeString().split(' ')[0]);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Failed to init attendance page:', err);
+        setLoadError(err instanceof Error ? err.message : 'Unable to load classroom data. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -247,7 +250,7 @@ export const TakeAttendancePage: React.FC = () => {
     window.print();
   };
 
-  if (loading || !classroom) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Navbar />
@@ -255,6 +258,33 @@ export const TakeAttendancePage: React.FC = () => {
           <div className="text-center text-xs text-slate-500">
             <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             Initializing live auditorium roll-call session...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !classroom) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-2xl p-6 border border-slate-200 text-center shadow-sm space-y-4">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 font-display">Unable to load classroom data</h3>
+              <p className="text-xs text-slate-500 mt-1">{loadError || 'The requested classroom could not be found.'}</p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Link
+                to={`/faculty/classrooms`}
+                className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold"
+              >
+                Back to Classrooms
+              </Link>
+            </div>
           </div>
         </div>
       </div>

@@ -37,6 +37,7 @@ export const ClassroomDetailPage: React.FC = () => {
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Active view: 'manage' (Manage Students CRUD table) or 'seating' (Cinema Seating Visualization)
   const [activeTab, setActiveTab] = useState<'manage' | 'seating'>('manage');
@@ -77,6 +78,7 @@ export const ClassroomDetailPage: React.FC = () => {
     if (!id) return;
     try {
       setLoading(true);
+      setLoadError(null);
       const cls = await api.getClassroomById(id);
       if (!cls) {
         navigate('/faculty/classrooms');
@@ -121,8 +123,9 @@ export const ClassroomDetailPage: React.FC = () => {
           setBulkImportOpen(true);
         }
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load classroom detail:', err);
+      setLoadError(err instanceof Error ? err.message : 'Unable to load classroom data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -130,6 +133,23 @@ export const ClassroomDetailPage: React.FC = () => {
 
   useEffect(() => {
     loadClassroomData();
+  }, [id]);
+
+  // Real-time synchronization: listen for database updates across devices
+  useEffect(() => {
+    const unsubscribe = api.subscribeToUpdates((event) => {
+      if (
+        event.type === 'STUDENT_ASSIGNED' || 
+        event.type === 'STUDENTS_BULK_IMPORTED' || 
+        event.type === 'STUDENT_UPDATED' || 
+        event.type === 'STUDENT_REMOVED' ||
+        event.type === 'CLASSROOM_UPDATED' ||
+        event.type === 'ATTENDANCE_SUBMITTED'
+      ) {
+        loadClassroomData();
+      }
+    });
+    return unsubscribe;
   }, [id]);
 
   // Open Add Student Modal
@@ -244,7 +264,7 @@ export const ClassroomDetailPage: React.FC = () => {
     api.downloadCSV(filename, headers, rows);
   };
 
-  if (loading || !classroom) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Navbar />
@@ -252,6 +272,40 @@ export const ClassroomDetailPage: React.FC = () => {
           <div className="text-center text-xs text-slate-500">
             <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <span>Loading classroom data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !classroom) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-2xl p-6 border border-slate-200 text-center shadow-sm space-y-4">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 font-display">Unable to load classroom data</h3>
+              <p className="text-xs text-slate-500 mt-1">{loadError || 'The requested classroom could not be found.'}</p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={loadClassroomData}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs"
+              >
+                Please try again
+              </button>
+              <Link
+                to="/faculty/classrooms"
+                className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold"
+              >
+                Back to Classrooms
+              </Link>
+            </div>
           </div>
         </div>
       </div>

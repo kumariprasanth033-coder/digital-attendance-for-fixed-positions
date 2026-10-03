@@ -63,6 +63,15 @@ export const AttendanceHistoryPage: React.FC = () => {
     loadData();
   }, [user]);
 
+  useEffect(() => {
+    const unsubscribe = api.subscribeToUpdates((event) => {
+      if (event.type === 'ATTENDANCE_SUBMITTED' || event.type === 'CLASSROOM_CREATED' || event.type === 'CLASSROOM_DELETED') {
+        loadData();
+      }
+    });
+    return unsubscribe;
+  }, [user]);
+
   const openSessionDetail = async (session: AttendanceSession) => {
     setActiveSession(session);
     try {

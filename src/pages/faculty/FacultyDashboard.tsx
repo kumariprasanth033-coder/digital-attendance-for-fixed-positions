@@ -61,6 +61,23 @@ export const FacultyDashboard: React.FC = () => {
     loadData();
   }, [user]);
 
+  useEffect(() => {
+    const unsubscribe = api.subscribeToUpdates((event) => {
+      if (
+        event.type === 'CLASSROOM_CREATED' ||
+        event.type === 'CLASSROOM_UPDATED' ||
+        event.type === 'CLASSROOM_DELETED' ||
+        event.type === 'STUDENT_ASSIGNED' ||
+        event.type === 'STUDENTS_BULK_IMPORTED' ||
+        event.type === 'STUDENT_REMOVED' ||
+        event.type === 'ATTENDANCE_SUBMITTED'
+      ) {
+        loadData();
+      }
+    });
+    return unsubscribe;
+  }, [user]);
+
   const handleCreateClassroom = async (data: { 
     class_name: string; 
     rows: number; 

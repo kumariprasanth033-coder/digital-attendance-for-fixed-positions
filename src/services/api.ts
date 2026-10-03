@@ -1,5 +1,3 @@
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
-import { isUUID, generateUUID, toSupabaseUUID } from '../lib/uuid';
 import { 
   Classroom, 
   Student, 
@@ -11,391 +9,38 @@ import {
   MarkState
 } from '../types';
 
-// ============================================================================
-// INITIAL REALISTIC SEED DATA (Used when Supabase is initially unconnected)
-// ============================================================================
+const API_BASE = '/api';
 
-const SEED_PROFILES: Profile[] = [
-  {
-    id: 'faculty-demo-001',
-    full_name: 'Dr. Ramesh Kumar',
-    email: 'ramesh.faculty@university.edu',
-    role: 'faculty',
-    account_status: 'active',
-    created_at: new Date(Date.now() - 30 * 86400000).toISOString()
-  },
-  {
-    id: 'admin-demo-001',
-    full_name: 'Admin Dean Office',
-    email: 'admin.portal@university.edu',
-    role: 'admin',
-    account_status: 'active',
-    created_at: new Date(Date.now() - 60 * 86400000).toISOString()
-  }
-];
-
-const SEED_CLASSROOMS: Classroom[] = [
-  {
-    id: 'cls-aids-001',
-    faculty_id: 'faculty-demo-001',
-    class_name: 'AI & DS - Section A',
-    rows: 4,
-    columns: 4,
-    total_positions: 16,
-    branch: 'AI & DS',
-    branches: ['AI & DS'],
-    seating_division_mode: 'gender',
-    enforce_seating_rule: true,
-    gender_config: {
-      arrangement: 'side_by_side',
-      girls_placement: 'right',
-      girls_rows: 4,
-      girls_columns: 2,
-      girls_total_seats: 8,
-      boys_rows: 4,
-      boys_columns: 2,
-      boys_total_seats: 8,
-      girls_start_row: 1,
-      girls_end_row: 4,
-      girls_start_col: 3,
-      girls_end_col: 4,
-      boys_start_row: 1,
-      boys_end_row: 4,
-      boys_start_col: 1,
-      boys_end_col: 2,
-    },
-    created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-    faculty_name: 'Dr. Ramesh Kumar'
-  },
-  {
-    id: 'cls-cse-002',
-    faculty_id: 'faculty-demo-001',
-    class_name: 'CSE - Cloud Computing Lab',
-    rows: 3,
-    columns: 4,
-    total_positions: 12,
-    branch: 'CSE',
-    branches: ['CSE'],
-    seating_division_mode: 'gender',
-    enforce_seating_rule: true,
-    gender_config: {
-      arrangement: 'side_by_side',
-      girls_placement: 'right',
-      girls_rows: 3,
-      girls_columns: 2,
-      girls_total_seats: 6,
-      boys_rows: 3,
-      boys_columns: 2,
-      boys_total_seats: 6,
-      girls_start_row: 1,
-      girls_end_row: 3,
-      girls_start_col: 3,
-      girls_end_col: 4,
-      boys_start_row: 1,
-      boys_end_row: 3,
-      boys_start_col: 1,
-      boys_end_col: 2,
-    },
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    faculty_name: 'Dr. Ramesh Kumar'
-  }
-];
-
-const SEED_STUDENTS: Student[] = [
-  // 16 Students for AI & DS - Section A (4x4 = 16)
-  { id: 'st-01', classroom_id: 'cls-aids-001', student_name: 'Aarav Sharma', roll_number: '23A81A0501', branch: 'AI & DS', gender: 'Male', row_number: 1, column_number: 1, position_number: 1, created_at: new Date().toISOString() },
-  { id: 'st-02', classroom_id: 'cls-aids-001', student_name: 'Rohan Verma', roll_number: '23A81A0502', branch: 'AI & DS', gender: 'Male', row_number: 1, column_number: 2, position_number: 2, created_at: new Date().toISOString() },
-  { id: 'st-03', classroom_id: 'cls-aids-001', student_name: 'Ananya Iyer', roll_number: '23A81A0503', branch: 'AI & DS', gender: 'Female', row_number: 1, column_number: 3, position_number: 3, created_at: new Date().toISOString() },
-  { id: 'st-04', classroom_id: 'cls-aids-001', student_name: 'Diya Reddy', roll_number: '23A81A0504', branch: 'AI & DS', gender: 'Female', row_number: 1, column_number: 4, position_number: 4, created_at: new Date().toISOString() },
-
-  { id: 'st-05', classroom_id: 'cls-aids-001', student_name: 'Rahul Nair', roll_number: '23A81A0505', branch: 'AI & DS', gender: 'Male', row_number: 2, column_number: 1, position_number: 5, created_at: new Date().toISOString() },
-  { id: 'st-06', classroom_id: 'cls-aids-001', student_name: 'Siddharth Sen', roll_number: '23A81A0506', branch: 'AI & DS', gender: 'Male', row_number: 2, column_number: 2, position_number: 6, created_at: new Date().toISOString() },
-  { id: 'st-07', classroom_id: 'cls-aids-001', student_name: 'Kavya Pillai', roll_number: '23A81A0507', branch: 'AI & DS', gender: 'Female', row_number: 2, column_number: 3, position_number: 7, created_at: new Date().toISOString() },
-  { id: 'st-08', classroom_id: 'cls-aids-001', student_name: 'Sneha Patel', roll_number: '23A81A0508', branch: 'AI & DS', gender: 'Female', row_number: 2, column_number: 4, position_number: 8, created_at: new Date().toISOString() },
-
-  { id: 'st-09', classroom_id: 'cls-aids-001', student_name: 'Aditya Joshi', roll_number: '23A81A0509', branch: 'AI & DS', gender: 'Male', row_number: 3, column_number: 1, position_number: 9, created_at: new Date().toISOString() },
-  { id: 'st-10', classroom_id: 'cls-aids-001', student_name: 'Karan Gupta', roll_number: '23A81A0510', branch: 'AI & DS', gender: 'Male', row_number: 3, column_number: 2, position_number: 10, created_at: new Date().toISOString() },
-  { id: 'st-11', classroom_id: 'cls-aids-001', student_name: 'Pooja Hegde', roll_number: '23A81A0511', branch: 'AI & DS', gender: 'Female', row_number: 3, column_number: 3, position_number: 11, created_at: new Date().toISOString() },
-  { id: 'st-12', classroom_id: 'cls-aids-001', student_name: 'Meera Menon', roll_number: '23A81A0512', branch: 'AI & DS', gender: 'Female', row_number: 3, column_number: 4, position_number: 12, created_at: new Date().toISOString() },
-
-  { id: 'st-13', classroom_id: 'cls-aids-001', student_name: 'Vikram Malhotra', roll_number: '23A81A0513', branch: 'AI & DS', gender: 'Male', row_number: 4, column_number: 1, position_number: 13, created_at: new Date().toISOString() },
-  { id: 'st-14', classroom_id: 'cls-aids-001', student_name: 'Arjun Saxena', roll_number: '23A81A0514', branch: 'AI & DS', gender: 'Male', row_number: 4, column_number: 2, position_number: 14, created_at: new Date().toISOString() },
-  { id: 'st-15', classroom_id: 'cls-aids-001', student_name: 'Tanvi Deshmukh', roll_number: '23A81A0515', branch: 'AI & DS', gender: 'Female', row_number: 4, column_number: 3, position_number: 15, created_at: new Date().toISOString() },
-  { id: 'st-16', classroom_id: 'cls-aids-001', student_name: 'Isha Kulkarni', roll_number: '23A81A0516', branch: 'AI & DS', gender: 'Female', row_number: 4, column_number: 4, position_number: 16, created_at: new Date().toISOString() },
-
-  // Students for CSE Lab
-  { id: 'st-cse-01', classroom_id: 'cls-cse-002', student_name: 'Manish Pandey', roll_number: '23A81A0401', branch: 'CSE', gender: 'Male', row_number: 1, column_number: 1, position_number: 1, created_at: new Date().toISOString() },
-  { id: 'st-cse-02', classroom_id: 'cls-cse-002', student_name: 'Priyanka Bose', roll_number: '23A81A0402', branch: 'CSE', gender: 'Female', row_number: 1, column_number: 2, position_number: 2, created_at: new Date().toISOString() },
-  { id: 'st-cse-03', classroom_id: 'cls-cse-002', student_name: 'Nikhil Rathi', roll_number: '23A81A0403', branch: 'CSE', gender: 'Male', row_number: 1, column_number: 3, position_number: 3, created_at: new Date().toISOString() }
-];
-
-const SEED_SESSIONS: AttendanceSession[] = [
-  {
-    id: 'ses-001',
-    classroom_id: 'cls-aids-001',
-    faculty_id: 'faculty-demo-001',
-    attendance_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-    start_time: '09:00:00',
-    notes: 'Lecture on Deep Learning & CNN Architecture',
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    class_name: 'AI & DS - Section A',
-    total_students: 16,
-    present_count: 14,
-    absent_count: 2,
-    attendance_percentage: 87.5
-  },
-  {
-    id: 'ses-002',
-    classroom_id: 'cls-aids-001',
-    faculty_id: 'faculty-demo-001',
-    attendance_date: new Date().toISOString().split('T')[0],
-    start_time: '11:30:00',
-    notes: 'Lab Session: Matrix Seating & Graph Theory',
-    created_at: new Date().toISOString(),
-    class_name: 'AI & DS - Section A',
-    total_students: 16,
-    present_count: 15,
-    absent_count: 1,
-    attendance_percentage: 93.8
-  }
-];
-
-const SEED_RECORDS: AttendanceRecord[] = [
-  // Session 1: 14 Present, 2 Absent (6 & 15 Absent)
-  ...SEED_STUDENTS.filter(s => s.classroom_id === 'cls-aids-001').map(s => ({
-    id: `rec-ses1-${s.id}`,
-    session_id: 'ses-001',
-    student_id: s.id,
-    status: (s.position_number === 6 || s.position_number === 15 ? 'Absent' : 'Present') as 'Present' | 'Absent',
-    marked_at: new Date(Date.now() - 86400000).toISOString(),
-    student_name: s.student_name,
-    roll_number: s.roll_number,
-    branch: s.branch,
-    gender: s.gender,
-    row_number: s.row_number,
-    column_number: s.column_number,
-    position_number: s.position_number
-  })),
-  // Session 2: 15 Present, 1 Absent (10 Absent)
-  ...SEED_STUDENTS.filter(s => s.classroom_id === 'cls-aids-001').map(s => ({
-    id: `rec-ses2-${s.id}`,
-    session_id: 'ses-002',
-    student_id: s.id,
-    status: (s.position_number === 10 ? 'Absent' : 'Present') as 'Present' | 'Absent',
-    marked_at: new Date().toISOString(),
-    student_name: s.student_name,
-    roll_number: s.roll_number,
-    branch: s.branch,
-    gender: s.gender,
-    row_number: s.row_number,
-    column_number: s.column_number,
-    position_number: s.position_number
-  }))
-];
-
-const SEED_LOGS: ActivityLog[] = [
-  { id: 'log-1', user_id: 'faculty-demo-001', action: 'CREATE_CLASSROOM', description: 'Classroom "AI & DS - Section A" created with 4x4 layout', created_at: new Date(Date.now() - 14 * 86400000).toISOString(), user_name: 'Dr. Ramesh Kumar' },
-  { id: 'log-2', user_id: 'faculty-demo-001', action: 'ASSIGN_STUDENTS', description: 'Assigned 16 students to fixed seating positions', created_at: new Date(Date.now() - 13 * 86400000).toISOString(), user_name: 'Dr. Ramesh Kumar' },
-  { id: 'log-3', user_id: 'faculty-demo-001', action: 'SUBMIT_ATTENDANCE', description: 'Marked attendance session: 14 Present, 2 Absent (87.5%)', created_at: new Date(Date.now() - 86400000).toISOString(), user_name: 'Dr. Ramesh Kumar' },
-  { id: 'log-4', user_id: 'admin-demo-001', action: 'ADMIN_AUDIT', description: 'Routine system audit completed across faculty departments', created_at: new Date().toISOString(), user_name: 'Admin Dean Office' }
-];
-
-// Persistent state wrapper
-class LocalStorageDatabase {
-  private getItem<T>(key: string, defaultValue: T): T {
-    try {
-      const item = localStorage.getItem(`digital_att_${key}`);
-      return item ? JSON.parse(item) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  }
-
-  private setItem<T>(key: string, value: T): void {
-    try {
-      localStorage.setItem(`digital_att_${key}`, JSON.stringify(value));
-    } catch (e) {
-      console.error('LocalStorage write failed:', e);
-    }
-  }
-
-  getProfiles(): Profile[] {
-    return this.getItem<Profile[]>('profiles', SEED_PROFILES);
-  }
-  setProfiles(profiles: Profile[]): void {
-    this.setItem('profiles', profiles);
-  }
-
-  getDeletedClassrooms(): string[] {
-    return this.getItem<string[]>('deleted_classrooms', []);
-  }
-
-  addDeletedClassrooms(ids: string[]): void {
-    const current = new Set(this.getDeletedClassrooms());
-    ids.forEach(id => {
-      if (id) current.add(id);
-    });
-    this.setItem('deleted_classrooms', Array.from(current));
-  }
-
-  getClassrooms(): Classroom[] {
-    const deleted = new Set(this.getDeletedClassrooms());
-    const list = this.getItem<Classroom[]>('classrooms', SEED_CLASSROOMS);
-    return list.filter(c => !deleted.has(c.id));
-  }
-  setClassrooms(classrooms: Classroom[]): void {
-    this.setItem('classrooms', classrooms);
-  }
-
-  getStudents(): Student[] {
-    return this.getItem<Student[]>('students', SEED_STUDENTS);
-  }
-  setStudents(students: Student[]): void {
-    this.setItem('students', students);
-  }
-
-  getSessions(): AttendanceSession[] {
-    return this.getItem<AttendanceSession[]>('sessions', SEED_SESSIONS);
-  }
-  setSessions(sessions: AttendanceSession[]): void {
-    this.setItem('sessions', sessions);
-  }
-
-  getRecords(): AttendanceRecord[] {
-    return this.getItem<AttendanceRecord[]>('records', SEED_RECORDS);
-  }
-  setRecords(records: AttendanceRecord[]): void {
-    this.setItem('records', records);
-  }
-
-  getLogs(): ActivityLog[] {
-    return this.getItem<ActivityLog[]>('logs', SEED_LOGS);
-  }
-  setLogs(logs: ActivityLog[]): void {
-    this.setItem('logs', logs);
-  }
-
-  resetToSeed(): void {
-    this.setProfiles(SEED_PROFILES);
-    this.setClassrooms(SEED_CLASSROOMS);
-    this.setStudents(SEED_STUDENTS);
-    this.setSessions(SEED_SESSIONS);
-    this.setRecords(SEED_RECORDS);
-    this.setLogs(SEED_LOGS);
-  }
-}
-
-export const localDb = new LocalStorageDatabase();
-
-// ============================================================================
-// UNIFIED DATA SERVICE (Supabase + Resilient Local Persistence)
-// ============================================================================
-
+/**
+ * Unified Database API Service.
+ * Connects directly to the central server persistence layer.
+ * Zero device-specific localStorage for classroom or attendance records.
+ * Multi-device synchronized.
+ */
 export const api = {
   // --------------------------------------------------------------------------
   // CLASSROOMS CRUD
   // --------------------------------------------------------------------------
   async getClassrooms(facultyId?: string): Promise<Classroom[]> {
-    const deleted = new Set(localDb.getDeletedClassrooms());
+    const url = facultyId 
+      ? `${API_BASE}/classrooms?faculty_id=${encodeURIComponent(facultyId)}`
+      : `${API_BASE}/classrooms`;
 
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        let query = client.from('classrooms').select(`
-          id, faculty_id, class_name, rows, columns, total_positions, created_at, updated_at
-        `);
-        if (facultyId) {
-          const sbFacultyId = toSupabaseUUID(facultyId);
-          if (sbFacultyId) {
-            query = query.eq('faculty_id', sbFacultyId);
-          }
-        }
-        const { data, error } = await query.order('created_at', { ascending: false });
-        if (error) throw error;
-        
-        // Enrich with student count
-        const classrooms: Classroom[] = [];
-        for (const item of (data || [])) {
-          if (deleted.has(item.id)) continue;
-          const { count } = await client
-            .from('students')
-            .select('*', { count: 'exact', head: true })
-            .eq('classroom_id', item.id);
-          classrooms.push({
-            ...item,
-            student_count: count ?? 0
-          });
-        }
-
-        if (classrooms.length > 0) {
-          const localClassrooms = localDb.getClassrooms().filter(c => !deleted.has(c.id));
-          const sbIds = new Set(classrooms.map(c => c.id));
-          const extra = localClassrooms.filter(c => !sbIds.has(c.id));
-          return [...classrooms, ...extra];
-        }
-      } catch (err) {
-        console.warn('Supabase query error, using local database:', err);
-      }
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to load classrooms: ${res.statusText}`);
     }
-
-    // Local fallback: Return classrooms for this faculty or include demo classrooms
-    const all = localDb.getClassrooms().filter(c => !deleted.has(c.id));
-    const students = localDb.getStudents();
-    const sessions = localDb.getSessions();
-
-    const filtered = facultyId 
-      ? all.filter(c => c.faculty_id === facultyId || c.faculty_id === 'faculty-demo-001' || c.faculty_id === 'a0000000-0000-0000-0000-000000000001') 
-      : all;
-
-    return (filtered.length > 0 ? filtered : all).map(c => {
-      const clsStudents = students.filter(s => s.classroom_id === c.id || (c.id.startsWith('c0000') && s.classroom_id === 'cls-aids-001'));
-      const clsSessions = sessions.filter(s => s.classroom_id === c.id);
-      const latestSession = clsSessions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-      return {
-        ...c,
-        student_count: clsStudents.length > 0 ? clsStudents.length : (c.rows * c.columns),
-        latest_attendance: latestSession?.attendance_date,
-        attendance_percentage: latestSession?.attendance_percentage
-      };
-    });
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async getClassroomById(id: string): Promise<Classroom | null> {
-    const deleted = new Set(localDb.getDeletedClassrooms());
-    if (deleted.has(id)) return null;
-
-    const sbClassroomId = toSupabaseUUID(id);
-    if (sbClassroomId && deleted.has(sbClassroomId)) return null;
-
-    if (isSupabaseConfigured() && sbClassroomId) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('classrooms')
-          .select('*')
-          .eq('id', sbClassroomId)
-          .maybeSingle();
-        if (!error && data) {
-          const { count } = await client
-            .from('students')
-            .select('*', { count: 'exact', head: true })
-            .eq('classroom_id', sbClassroomId);
-          return {
-            ...data,
-            student_count: count ?? 0
-          } as Classroom;
-        }
-      } catch (err) {
-        console.warn('Supabase getClassroomById error:', err);
-      }
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(id)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`Failed to load classroom details: ${res.statusText}`);
     }
-    const all = localDb.getClassrooms().filter(c => !deleted.has(c.id));
-    const found = all.find(c => c.id === id || (id.startsWith('c0000') && c.id === 'cls-aids-001') || (id === 'cls-aids-001' && c.id.startsWith('c0000')));
-    if (!found) {
-      return null;
-    }
-    const students = localDb.getStudents().filter(s => s.classroom_id === found.id || (found.id.startsWith('c0000') && s.classroom_id === 'cls-aids-001'));
-    return { ...found, student_count: students.length > 0 ? students.length : (found.rows * found.columns) };
+    return await res.json();
   },
 
   async createClassroom(payload: { 
@@ -410,483 +55,131 @@ export const api = {
     gender_config?: import('../types').GenderSeatingConfig;
     enforce_seating_rule?: boolean;
   }): Promise<Classroom> {
-    const total_positions = payload.rows * payload.columns;
-
-    const computedBranch = payload.branch || (payload.branches && payload.branches.length > 0 ? payload.branches.join(' + ') : undefined);
-    const sbFacultyId = toSupabaseUUID(payload.faculty_id);
-
-    if (isSupabaseConfigured() && sbFacultyId) {
-      try {
-        const client = getSupabase();
-        const insertPayload: Record<string, unknown> = {
-          faculty_id: sbFacultyId,
-          class_name: payload.class_name.trim(),
-          rows: payload.rows,
-          columns: payload.columns
-        };
-        const { data, error } = await client
-          .from('classrooms')
-          .insert([insertPayload])
-          .select()
-          .single();
-        if (!error && data) {
-          await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns}${computedBranch ? `, Branches: ${computedBranch}` : ''})`);
-          const created: Classroom = {
-            ...data,
-            branch: computedBranch,
-            branches: payload.branches,
-            branch_configs: payload.branch_configs,
-            seating_division_mode: payload.seating_division_mode,
-            gender_config: payload.gender_config,
-            enforce_seating_rule: payload.enforce_seating_rule,
-            total_positions,
-            student_count: 0
-          };
-          const current = localDb.getClassrooms();
-          localDb.setClassrooms([created, ...current]);
-          return created;
-        }
-      } catch (err) {
-        console.warn('Supabase createClassroom error, falling back:', err);
-      }
+    const res = await fetch(`${API_BASE}/classrooms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to create classroom');
     }
-
-    const newClassroom: Classroom = {
-      id: generateUUID(),
-      faculty_id: payload.faculty_id,
-      class_name: payload.class_name.trim(),
-      rows: payload.rows,
-      columns: payload.columns,
-      total_positions,
-      branch: computedBranch,
-      branches: payload.branches,
-      branch_configs: payload.branch_configs,
-      seating_division_mode: payload.seating_division_mode,
-      gender_config: payload.gender_config,
-      enforce_seating_rule: payload.enforce_seating_rule,
-      created_at: new Date().toISOString(),
-      student_count: 0
-    };
-
-    const current = localDb.getClassrooms();
-    localDb.setClassrooms([newClassroom, ...current]);
-    await this.logActivity(payload.faculty_id, 'CREATE_CLASSROOM', `Created classroom "${payload.class_name}" (${payload.rows}x${payload.columns}${computedBranch ? `, Branches: ${computedBranch}` : ''})`);
-    return newClassroom;
+    return await res.json();
   },
 
   async updateClassroom(id: string, updates: Partial<Classroom>): Promise<Classroom> {
-    const sbClassroomId = toSupabaseUUID(id);
-    if (isSupabaseConfigured() && sbClassroomId) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('classrooms')
-          .update(updates)
-          .eq('id', sbClassroomId)
-          .select()
-          .single();
-        if (error) throw error;
-        return data as Classroom;
-      } catch (err) {
-        console.warn('Supabase updateClassroom error:', err);
-      }
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to update classroom');
     }
-
-    const current = localDb.getClassrooms();
-    const idx = current.findIndex(c => c.id === id);
-    if (idx === -1) throw new Error('Classroom not found');
-    const updated = { ...current[idx], ...updates, updated_at: new Date().toISOString() };
-    current[idx] = updated;
-    localDb.setClassrooms(current);
-    return updated;
+    return await res.json();
   },
 
   async deleteClassroom(id: string, userId?: string): Promise<boolean> {
-    const sbClassroomId = toSupabaseUUID(id);
-    const targetIds = new Set<string>([id]);
-    if (sbClassroomId) targetIds.add(sbClassroomId);
-
-    // Explicit alias resolution for demo classrooms so both variants are deleted
-    if (id === 'cls-cse-002' || id === 'c0000000-0000-0000-0000-000000000002') {
-      targetIds.add('cls-cse-002');
-      targetIds.add('c0000000-0000-0000-0000-000000000002');
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to delete classroom');
     }
-    if (id === 'cls-aids-001' || id === 'c0000000-0000-0000-0000-000000000001') {
-      targetIds.add('cls-aids-001');
-      targetIds.add('c0000000-0000-0000-0000-000000000001');
-    }
-
-    const idsArray = Array.from(targetIds);
-
-    // 1. Mark as permanently deleted in localDb tombstone so it can NEVER be loaded or resurrected
-    localDb.addDeletedClassrooms(idsArray);
-
-    // 2. Cascade delete from local storage: classrooms
-    const remainingClassrooms = localDb.getClassrooms().filter(c => !targetIds.has(c.id));
-    localDb.setClassrooms(remainingClassrooms);
-
-    // 3. Cascade delete from local storage: students
-    const remainingStudents = localDb.getStudents().filter(s => !targetIds.has(s.classroom_id));
-    localDb.setStudents(remainingStudents);
-
-    // 4. Cascade delete from local storage: sessions & records
-    const sessionsToDelete = localDb.getSessions().filter(s => targetIds.has(s.classroom_id)).map(s => s.id);
-    const remainingSessions = localDb.getSessions().filter(s => !targetIds.has(s.classroom_id));
-    localDb.setSessions(remainingSessions);
-
-    const remainingRecords = localDb.getRecords().filter(r => !sessionsToDelete.includes(r.session_id));
-    localDb.setRecords(remainingRecords);
-
-    // 5. Delete from Supabase if configured (cascade dependent records first)
-    if (isSupabaseConfigured()) {
-      for (const tId of idsArray) {
-        const sbId = toSupabaseUUID(tId);
-        if (sbId) {
-          try {
-            const client = getSupabase();
-            await client.from('attendance_sessions').delete().eq('classroom_id', sbId);
-            await client.from('students').delete().eq('classroom_id', sbId);
-            await client.from('classrooms').delete().eq('id', sbId);
-          } catch (err) {
-            console.warn('Supabase cascade deleteClassroom error:', err);
-          }
-        }
-      }
-    }
-
-    if (userId) {
-      await this.logActivity(userId, 'DELETE_CLASSROOM', `Deleted classroom ID: ${id}`);
-    }
-
     return true;
   },
 
   // --------------------------------------------------------------------------
-  // STUDENTS CRUD & FIXED POSITION MANAGEMENT
+  // SEATS & STUDENTS CRUD
   // --------------------------------------------------------------------------
+  async getSeatsByClassroom(classroomId: string): Promise<Array<{
+    id: string;
+    classroom_id: string;
+    row_number: number;
+    column_number: number;
+    position_number: number;
+    seat_code: string;
+  }>> {
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(classroomId)}/seats`);
+    if (!res.ok) {
+      throw new Error(`Failed to load seats: ${res.statusText}`);
+    }
+    return await res.json();
+  },
+
   async getStudentsByClassroom(classroomId: string): Promise<Student[]> {
-    const sbClassroomId = toSupabaseUUID(classroomId);
-    if (isSupabaseConfigured() && sbClassroomId) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('students')
-          .select('*')
-          .eq('classroom_id', sbClassroomId)
-          .order('row_number', { ascending: true })
-          .order('column_number', { ascending: true });
-        
-        if (!error && Array.isArray(data)) {
-          // If Supabase returned rows, return them
-          if (data.length > 0) {
-            return data as Student[];
-          }
-          // If 0 rows in Supabase, check if this is the default demo classroom and seed exists in localDb
-          const localMatch = localDb.getStudents().filter(s => s.classroom_id === classroomId);
-          if (localMatch.length > 0) {
-            return localMatch;
-          }
-          return [];
-        }
-      } catch (err) {
-        console.warn('Supabase getStudentsByClassroom error:', err);
-      }
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(classroomId)}/students`);
+    if (!res.ok) {
+      throw new Error(`Failed to load classroom students: ${res.statusText}`);
     }
-
-    const students = localDb.getStudents()
-      .filter(s => s.classroom_id === classroomId || (classroomId.startsWith('c0000') && s.classroom_id === 'cls-aids-001') || (classroomId === 'cls-aids-001' && s.classroom_id.startsWith('c0000')))
-      .sort((a, b) => a.position_number - b.position_number);
-
-    if (students.length > 0) {
-      return students;
-    }
-
-    // If default demo classroom, provide the 16 demo students
-    if (classroomId === 'cls-aids-001' || classroomId === 'c0000000-0000-0000-0000-000000000001') {
-      return localDb.getStudents()
-        .filter(s => s.classroom_id === 'cls-aids-001')
-        .map(s => ({ ...s, classroom_id: classroomId }));
-    }
-
-    return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async getAllStudents(): Promise<Student[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('students')
-          .select('*')
-          .order('student_name', { ascending: true });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const localStudents = localDb.getStudents();
-          const sbIds = new Set(data.map(s => s.id));
-          const extra = localStudents.filter(s => !sbIds.has(s.id));
-          return [...(data as Student[]), ...extra];
-        }
-      } catch (err) {
-        console.warn('Supabase getAllStudents error:', err);
-      }
+    const classrooms = await this.getClassrooms();
+    let all: Student[] = [];
+    for (const c of classrooms) {
+      const st = await this.getStudentsByClassroom(c.id);
+      all = [...all, ...st];
     }
-    return localDb.getStudents();
+    return all;
   },
 
   async assignStudent(student: Omit<Student, 'id' | 'created_at'>): Promise<Student> {
-    // 1. Validation checks
-    const existingStudents = await this.getStudentsByClassroom(student.classroom_id);
-
-    // Prevent duplicate roll number in same classroom
-    const duplicateRoll = existingStudents.find(
-      s => s.roll_number.trim().toLowerCase() === student.roll_number.trim().toLowerCase()
-    );
-    if (duplicateRoll) {
-      throw new Error(`Roll number "${student.roll_number}" is already assigned to ${duplicateRoll.student_name} in this classroom.`);
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(student.classroom_id)}/students`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(student)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to assign student');
     }
-
-    // Prevent duplicate seat assignment
-    const duplicateSeat = existingStudents.find(
-      s => s.row_number === student.row_number && s.column_number === student.column_number
-    );
-    if (duplicateSeat) {
-      throw new Error(`Seat (Row ${student.row_number}, Column ${student.column_number}) is already occupied by ${duplicateSeat.student_name}.`);
-    }
-
-    const payload: Omit<Student, 'id' | 'created_at'> = {
-      classroom_id: student.classroom_id,
-      student_name: student.student_name.trim(),
-      roll_number: student.roll_number.trim().toUpperCase(),
-      branch: student.branch.trim(),
-      gender: student.gender,
-      row_number: student.row_number,
-      column_number: student.column_number,
-      position_number: student.position_number || ((student.row_number - 1) * 4 + student.column_number)
-    };
-
-    const sbClassroomId = toSupabaseUUID(student.classroom_id);
-
-    if (isSupabaseConfigured() && sbClassroomId) {
-      try {
-        const client = getSupabase();
-        const dbPayload = {
-          ...payload,
-          classroom_id: sbClassroomId
-        };
-        const { data, error } = await client
-          .from('students')
-          .insert([dbPayload])
-          .select()
-          .single();
-        if (error) {
-          if (error.message?.includes('unique_roll_per_classroom') || error.message?.includes('duplicate key')) {
-            throw new Error(`Roll number "${student.roll_number}" already exists in this classroom.`);
-          }
-          if (error.message?.includes('unique_seat_per_classroom') || error.message?.includes('unique_position_per_classroom')) {
-            throw new Error(`Position Row ${student.row_number}, Column ${student.column_number} is already occupied.`);
-          }
-          console.warn('Supabase assignStudent notice (falling back locally):', error.message);
-        } else if (data) {
-          // Keep localDb in sync
-          const current = localDb.getStudents();
-          localDb.setStudents([...current.filter(s => s.id !== data.id), data as Student]);
-          return data as Student;
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('already exists') || errMsg.includes('already occupied')) {
-          throw err;
-        }
-        console.warn('Supabase assignStudent fallback active:', err);
-      }
-    }
-
-    const newStudent: Student = {
-      ...payload,
-      id: generateUUID(),
-      created_at: new Date().toISOString()
-    };
-
-    const current = localDb.getStudents();
-    localDb.setStudents([...current, newStudent]);
-    return newStudent;
+    return await res.json();
   },
 
   async bulkAssignStudents(
     classroomId: string, 
     newStudents: Array<Omit<Student, 'id' | 'created_at'>>
   ): Promise<{ inserted: Student[]; count: number }> {
-    if (!newStudents || newStudents.length === 0) {
-      return { inserted: [], count: 0 };
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(classroomId)}/students/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ students: newStudents })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to import students');
     }
-
-    const existingStudents = await this.getStudentsByClassroom(classroomId);
-    const existingRolls = new Set(existingStudents.map(s => s.roll_number.trim().toLowerCase()));
-    const occupiedSeats = new Set(existingStudents.map(s => `${s.row_number}-${s.column_number}`));
-
-    const validToInsert: Array<Omit<Student, 'id' | 'created_at'>> = [];
-    for (const st of newStudents) {
-      const cleanRoll = st.roll_number.trim().toLowerCase();
-      const seatKey = `${st.row_number}-${st.column_number}`;
-      if (existingRolls.has(cleanRoll)) {
-        continue;
-      }
-      if (occupiedSeats.has(seatKey)) {
-        continue;
-      }
-      existingRolls.add(cleanRoll);
-      occupiedSeats.add(seatKey);
-      validToInsert.push({
-        ...st,
-        classroom_id: classroomId,
-        student_name: st.student_name.trim(),
-        roll_number: st.roll_number.trim().toUpperCase(),
-        branch: (st.branch || 'General').trim(),
-        gender: st.gender,
-        row_number: st.row_number,
-        column_number: st.column_number,
-        position_number: st.position_number
-      });
-    }
-
-    let insertedList: Student[] = [];
-    const sbClassroomId = toSupabaseUUID(classroomId);
-
-    if (isSupabaseConfigured() && sbClassroomId && validToInsert.length > 0) {
-      try {
-        const client = getSupabase();
-        // Prepare base schema payload with valid UUID
-        const dbPayloads = validToInsert.map(s => ({
-          classroom_id: sbClassroomId,
-          student_name: s.student_name,
-          roll_number: s.roll_number,
-          branch: s.branch,
-          gender: s.gender,
-          row_number: s.row_number,
-          column_number: s.column_number,
-          position_number: s.position_number
-        }));
-
-        const { data, error } = await client
-          .from('students')
-          .insert(dbPayloads)
-          .select();
-
-        if (error) {
-          console.warn('Supabase bulk insert notice:', error.message);
-        } else if (data && Array.isArray(data)) {
-          insertedList = data.map((d, i) => ({
-            ...(d as Student),
-            section: validToInsert[i]?.section,
-            email: validToInsert[i]?.email,
-            mobile: validToInsert[i]?.mobile,
-            seat_id: `R${d.row_number}-C${d.column_number}`
-          }));
-        }
-      } catch (err) {
-        console.warn('Supabase bulkAssignStudents error, fallback active:', err);
-      }
-    }
-
-    // Fallback if Supabase was unavailable or returned empty
-    if (insertedList.length === 0 && validToInsert.length > 0) {
-      insertedList = validToInsert.map((s) => ({
-        ...s,
-        id: generateUUID(),
-        created_at: new Date().toISOString(),
-        seat_id: `R${s.row_number}-C${s.column_number}`
-      }));
-    }
-
-    // Keep localDb in sync
-    const currentAll = localDb.getStudents();
-    const newIds = new Set(insertedList.map(s => s.id));
-    const merged = [...currentAll.filter(s => !newIds.has(s.id)), ...insertedList];
-    localDb.setStudents(merged);
-
-    return { inserted: insertedList, count: insertedList.length };
+    return await res.json();
   },
 
   async updateStudent(id: string, updates: Partial<Student>): Promise<Student> {
-    // If classroom_id, roll_number, or row/col changed, validate uniqueness
-    if (updates.classroom_id) {
-      const existing = await this.getStudentsByClassroom(updates.classroom_id);
-      if (updates.roll_number) {
-        const duplicateRoll = existing.find(
-          s => s.id !== id && s.roll_number.trim().toLowerCase() === updates.roll_number!.trim().toLowerCase()
-        );
-        if (duplicateRoll) {
-          throw new Error(`Roll number "${updates.roll_number}" is already used by ${duplicateRoll.student_name}.`);
-        }
-      }
-      if (updates.row_number !== undefined && updates.column_number !== undefined) {
-        const duplicateSeat = existing.find(
-          s => s.id !== id && s.row_number === updates.row_number && s.column_number === updates.column_number
-        );
-        if (duplicateSeat) {
-          throw new Error(`Seat Position Row ${updates.row_number}, Col ${updates.column_number} is already taken by ${duplicateSeat.student_name}.`);
-        }
-      }
+    const res = await fetch(`${API_BASE}/students/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to update student');
     }
-
-    const sbStudentId = toSupabaseUUID(id);
-    if (isSupabaseConfigured() && sbStudentId) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('students')
-          .update(updates)
-          .eq('id', sbStudentId)
-          .select()
-          .single();
-        if (error) {
-          if (error.message?.includes('unique_roll_per_classroom') || error.message?.includes('duplicate key')) {
-            throw new Error(`Roll number already exists in this classroom.`);
-          }
-          if (error.message?.includes('unique_seat_per_classroom') || error.message?.includes('unique_position_per_classroom')) {
-            throw new Error(`Seat Position is already occupied.`);
-          }
-          console.warn('Supabase updateStudent notice (falling back locally):', error.message);
-        } else if (data) {
-          const current = localDb.getStudents();
-          const idx = current.findIndex(s => s.id === id);
-          if (idx !== -1) {
-            current[idx] = data as Student;
-            localDb.setStudents(current);
-          }
-          return data as Student;
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('already exists') || errMsg.includes('already occupied')) {
-          throw err;
-        }
-        console.warn('Supabase updateStudent fallback active:', err);
-      }
-    }
-
-    const current = localDb.getStudents();
-    const idx = current.findIndex(s => s.id === id);
-    if (idx === -1) throw new Error('Student not found');
-    const updated = { ...current[idx], ...updates, updated_at: new Date().toISOString() };
-    current[idx] = updated;
-    localDb.setStudents(current);
-    return updated;
+    return await res.json();
   },
 
   async removeStudent(id: string): Promise<boolean> {
-    const sbStudentId = toSupabaseUUID(id);
-    if (isSupabaseConfigured() && sbStudentId) {
-      try {
-        const client = getSupabase();
-        const { error } = await client.from('students').delete().eq('id', sbStudentId);
-        if (error) console.warn('Supabase removeStudent notice:', error.message);
-      } catch (err) {
-        console.warn('Supabase removeStudent error:', err);
-      }
+    const res = await fetch(`${API_BASE}/students/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to remove student');
     }
-
-    const students = localDb.getStudents().filter(s => s.id !== id);
-    localDb.setStudents(students);
     return true;
   },
 
@@ -899,347 +192,105 @@ export const api = {
     attendance_date: string;
     start_time: string;
     notes?: string;
-    marks: Record<string, MarkState>; // student_id -> 'Present' | 'Absent'
+    marks: Record<string, MarkState>;
   }): Promise<AttendanceSession> {
-    const students = await this.getStudentsByClassroom(payload.classroom_id);
-    const total_students = students.length;
-    
-    let present_count = 0;
-    let absent_count = 0;
-
-    const recordsToInsert: Array<{ student_id: string; status: 'Present' | 'Absent' }> = [];
-
-    students.forEach(s => {
-      const mark = payload.marks[s.id];
-      const status: 'Present' | 'Absent' = mark === 'Absent' ? 'Absent' : 'Present'; // default to present if unmarked, or mark as present
-      if (status === 'Present') present_count++;
-      else absent_count++;
-
-      recordsToInsert.push({
-        student_id: s.id,
-        status
-      });
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(payload.classroom_id)}/attendance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-
-    const attendance_percentage = total_students > 0 
-      ? Math.round((present_count / total_students) * 1000) / 10 
-      : 0;
-
-    const sbClassroomId = toSupabaseUUID(payload.classroom_id);
-    const sbFacultyId = toSupabaseUUID(payload.faculty_id);
-
-    if (isSupabaseConfigured() && sbClassroomId && sbFacultyId) {
-      try {
-        const client = getSupabase();
-        // Insert session
-        const { data: sessionData, error: sessionErr } = await client
-          .from('attendance_sessions')
-          .insert([{
-            classroom_id: sbClassroomId,
-            faculty_id: sbFacultyId,
-            attendance_date: payload.attendance_date,
-            start_time: payload.start_time,
-            notes: payload.notes || null
-          }])
-          .select()
-          .single();
-
-        if (sessionErr) throw sessionErr;
-
-        // Insert batch records
-        const recordsPayload = recordsToInsert
-          .map(r => ({
-            session_id: sessionData.id,
-            student_id: toSupabaseUUID(r.student_id),
-            status: r.status
-          }))
-          .filter((r): r is { session_id: string; student_id: string; status: 'Present' | 'Absent' } => Boolean(r.student_id));
-
-        if (recordsPayload.length > 0) {
-          const { error: recordsErr } = await client
-            .from('attendance_records')
-            .insert(recordsPayload);
-
-          if (recordsErr) console.warn('Supabase records insert notice:', recordsErr.message);
-        }
-
-        await this.logActivity(
-          payload.faculty_id, 
-          'SUBMIT_ATTENDANCE', 
-          `Submitted attendance session: ${present_count} Present, ${absent_count} Absent (${attendance_percentage}%)`
-        );
-
-        return {
-          ...sessionData,
-          total_students,
-          present_count,
-          absent_count,
-          attendance_percentage
-        } as AttendanceSession;
-      } catch (err) {
-        console.warn('Supabase submitAttendanceSession error, using local:', err);
-      }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Failed to submit attendance session');
     }
-
-    const sessionId = generateUUID();
-    const newSession: AttendanceSession = {
-      id: sessionId,
-      classroom_id: payload.classroom_id,
-      faculty_id: payload.faculty_id,
-      attendance_date: payload.attendance_date,
-      start_time: payload.start_time,
-      notes: payload.notes,
-      created_at: new Date().toISOString(),
-      total_students,
-      present_count,
-      absent_count,
-      attendance_percentage
-    };
-
-    const newRecords: AttendanceRecord[] = students.map(s => {
-      const status: 'Present' | 'Absent' = payload.marks[s.id] === 'Absent' ? 'Absent' : 'Present';
-      return {
-        id: `rec-${sessionId}-${s.id}`,
-        session_id: sessionId,
-        student_id: s.id,
-        status,
-        marked_at: new Date().toISOString(),
-        student_name: s.student_name,
-        roll_number: s.roll_number,
-        branch: s.branch,
-        gender: s.gender,
-        row_number: s.row_number,
-        column_number: s.column_number,
-        position_number: s.position_number
-      };
-    });
-
-    const sessions = localDb.getSessions();
-    localDb.setSessions([newSession, ...sessions]);
-
-    const records = localDb.getRecords();
-    localDb.setRecords([...records, ...newRecords]);
-
-    await this.logActivity(
-      payload.faculty_id, 
-      'SUBMIT_ATTENDANCE', 
-      `Recorded attendance: ${present_count} Present, ${absent_count} Absent (${attendance_percentage}%)`
-    );
-
-    return newSession;
+    return await res.json();
   },
 
   async getAttendanceSessions(filter?: { faculty_id?: string; classroom_id?: string; date?: string }): Promise<AttendanceSession[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        let query = client.from('attendance_sessions').select(`
-          id, classroom_id, faculty_id, attendance_date, start_time, notes, created_at,
-          classrooms(class_name)
-        `);
+    const params = new URLSearchParams();
+    if (filter?.faculty_id) params.append('faculty_id', filter.faculty_id);
+    if (filter?.classroom_id) params.append('classroom_id', filter.classroom_id);
+    if (filter?.date) params.append('date', filter.date);
 
-        if (filter?.faculty_id) {
-          const sbFac = toSupabaseUUID(filter.faculty_id);
-          if (sbFac) query = query.eq('faculty_id', sbFac);
-        }
-        if (filter?.classroom_id) {
-          const sbCls = toSupabaseUUID(filter.classroom_id);
-          if (sbCls) query = query.eq('classroom_id', sbCls);
-        }
-        if (filter?.date) query = query.eq('attendance_date', filter.date);
-
-        const { data, error } = await query.order('attendance_date', { ascending: false });
-        if (error) throw error;
-
-        // Fetch counts for each session
-        const enriched: AttendanceSession[] = [];
-        for (const item of (data || [])) {
-          const { data: recs } = await client
-            .from('attendance_records')
-            .select('status')
-            .eq('session_id', item.id);
-          
-          const present = recs?.filter(r => r.status === 'Present').length || 0;
-          const absent = recs?.filter(r => r.status === 'Absent').length || 0;
-          const total = present + absent;
-          const pct = total > 0 ? Math.round((present / total) * 1000) / 10 : 0;
-
-          enriched.push({
-            id: item.id,
-            classroom_id: item.classroom_id,
-            faculty_id: item.faculty_id,
-            attendance_date: item.attendance_date,
-            start_time: item.start_time,
-            notes: item.notes,
-            created_at: item.created_at,
-            class_name: (item.classrooms as unknown as { class_name: string })?.class_name || 'Classroom',
-            total_students: total,
-            present_count: present,
-            absent_count: absent,
-            attendance_percentage: pct
-          });
-        }
-        if (enriched.length > 0) {
-          const localSessions = localDb.getSessions();
-          const sbIds = new Set(enriched.map(s => s.id));
-          let merged = [...enriched, ...localSessions.filter(s => !sbIds.has(s.id))];
-          if (filter?.faculty_id) merged = merged.filter(s => s.faculty_id === filter.faculty_id || (filter.faculty_id === 'faculty-demo-001' && s.faculty_id === 'a0000000-0000-0000-0000-000000000001'));
-          if (filter?.classroom_id) merged = merged.filter(s => s.classroom_id === filter.classroom_id);
-          if (filter?.date) merged = merged.filter(s => s.attendance_date === filter.date);
-          return merged;
-        }
-      } catch (err) {
-        console.warn('Supabase getAttendanceSessions error:', err);
-      }
+    const res = await fetch(`${API_BASE}/attendance/sessions?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error(`Failed to load attendance sessions: ${res.statusText}`);
     }
-
-    let sessions = localDb.getSessions();
-    const classrooms = localDb.getClassrooms();
-    const records = localDb.getRecords();
-
-    if (filter?.faculty_id) sessions = sessions.filter(s => s.faculty_id === filter.faculty_id);
-    if (filter?.classroom_id) sessions = sessions.filter(s => s.classroom_id === filter.classroom_id);
-    if (filter?.date) sessions = sessions.filter(s => s.attendance_date === filter.date);
-
-    return sessions.map(s => {
-      const cls = classrooms.find(c => c.id === s.classroom_id);
-      const sessionRecords = records.filter(r => r.session_id === s.id);
-      const present = sessionRecords.filter(r => r.status === 'Present').length;
-      const absent = sessionRecords.filter(r => r.status === 'Absent').length;
-      const total = sessionRecords.length || (s.total_students ?? 0);
-      const pct = total > 0 ? Math.round((present / total) * 1000) / 10 : 0;
-
-      return {
-        ...s,
-        class_name: cls?.class_name || 'Classroom',
-        total_students: total,
-        present_count: present,
-        absent_count: absent,
-        attendance_percentage: pct
-      };
-    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async getSessionRecords(sessionId: string): Promise<AttendanceRecord[]> {
-    const sbSessionId = toSupabaseUUID(sessionId);
-    if (isSupabaseConfigured() && sbSessionId) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client
-          .from('attendance_records')
-          .select(`
-            id, session_id, student_id, status, marked_at,
-            students(student_name, roll_number, branch, gender, row_number, column_number, position_number)
-          `)
-          .eq('session_id', sbSessionId);
-        if (!error && data) {
-          return (data || []).map(r => {
-            const st = r.students as unknown as Student;
-            return {
-              id: r.id,
-              session_id: r.session_id,
-              student_id: r.student_id,
-              status: r.status,
-              marked_at: r.marked_at,
-              student_name: st?.student_name,
-              roll_number: st?.roll_number,
-              branch: st?.branch,
-              gender: st?.gender,
-              row_number: st?.row_number,
-              column_number: st?.column_number,
-              position_number: st?.position_number
-            };
-          });
-        }
-      } catch (err) {
-        console.warn('Supabase getSessionRecords error:', err);
-      }
+    const res = await fetch(`${API_BASE}/attendance/sessions/${encodeURIComponent(sessionId)}/records`);
+    if (!res.ok) {
+      throw new Error(`Failed to load session records: ${res.statusText}`);
     }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
 
-    const records = localDb.getRecords().filter(r => r.session_id === sessionId);
-    const students = localDb.getStudents();
-    return records.map(r => {
-      const student = students.find(s => s.id === r.student_id);
-      return {
-        ...r,
-        student_name: student?.student_name || r.student_name,
-        roll_number: student?.roll_number || r.roll_number,
-        branch: student?.branch || r.branch,
-        gender: student?.gender || r.gender,
-        row_number: student?.row_number || r.row_number,
-        column_number: student?.column_number || r.column_number,
-        position_number: student?.position_number || r.position_number
-      };
-    }).sort((a, b) => (a.position_number || 0) - (b.position_number || 0));
+  async getCombinedReport(classroomId: string): Promise<StudentAggregateReport[]> {
+    const res = await fetch(`${API_BASE}/classrooms/${encodeURIComponent(classroomId)}/reports`);
+    if (!res.ok) {
+      throw new Error(`Failed to load attendance reports: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   // --------------------------------------------------------------------------
-  // COMBINED ATTENDANCE REPORTS & CSV GENERATION
+  // PROFILES & ACTIVITY LOGS
   // --------------------------------------------------------------------------
-  async getCombinedReport(classroomId: string): Promise<StudentAggregateReport[]> {
-    const students = await this.getStudentsByClassroom(classroomId);
-    const sessions = await this.getAttendanceSessions({ classroom_id: classroomId });
-    const sessionIds = sessions.map(s => s.id);
-    const cls = await this.getClassroomById(classroomId);
-
-    let allRecords: AttendanceRecord[] = [];
-    const sbSessionIds = sessionIds.map(toSupabaseUUID).filter((id): id is string => Boolean(id));
-
-    if (isSupabaseConfigured() && sbSessionIds.length > 0) {
-      try {
-        const client = getSupabase();
-        const { data } = await client
-          .from('attendance_records')
-          .select('*')
-          .in('session_id', sbSessionIds);
-        allRecords = data || [];
-      } catch {
-        allRecords = localDb.getRecords().filter(r => sessionIds.includes(r.session_id));
-      }
-    } else {
-      allRecords = localDb.getRecords().filter(r => sessionIds.includes(r.session_id));
+  async getProfiles(): Promise<Profile[]> {
+    const res = await fetch(`${API_BASE}/profiles`);
+    if (!res.ok) {
+      throw new Error(`Failed to load profiles: ${res.statusText}`);
     }
+    return await res.json();
+  },
 
-    const report: StudentAggregateReport[] = students.map(student => {
-      const studentRecords = allRecords.filter(r => r.student_id === student.id);
-      const total_sessions = sessions.length;
-      const present_count = studentRecords.filter(r => r.status === 'Present').length;
-      const absent_count = studentRecords.filter(r => r.status === 'Absent').length;
-      const percentage = total_sessions > 0 ? Math.round((present_count / total_sessions) * 1000) / 10 : 0;
-
-      return {
-        student_id: student.id,
-        roll_number: student.roll_number,
-        student_name: student.student_name,
-        branch: student.branch,
-        gender: student.gender,
-        row_number: student.row_number,
-        column_number: student.column_number,
-        position_number: student.position_number,
-        classroom_name: cls?.class_name || 'Classroom',
-        total_sessions,
-        present_count,
-        absent_count,
-        percentage
-      };
+  async updateProfile(id: string, updates: Partial<Profile>): Promise<Profile> {
+    const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
     });
+    if (!res.ok) {
+      throw new Error(`Failed to update profile: ${res.statusText}`);
+    }
+    return await res.json();
+  },
 
-    return report.sort((a, b) => a.position_number - b.position_number);
+  async deleteAccount(id: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/profiles/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  },
+
+  async logActivity(userId: string, action: string, description: string): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, action, description })
+      });
+    } catch {
+      // Non-blocking
+    }
+  },
+
+  async getActivityLogs(): Promise<ActivityLog[]> {
+    const res = await fetch(`${API_BASE}/logs`);
+    if (!res.ok) return [];
+    return await res.json();
   },
 
   downloadCSV(filename: string, headers: string[], rows: (string | number)[][]): void {
-    const sanitize = (val: string | number) => {
-      const str = String(val ?? '');
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
     const csvContent = [
-      headers.map(sanitize).join(','),
-      ...rows.map(row => row.map(sanitize).join(','))
-    ].join('\r\n');
+      headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1253,89 +304,27 @@ export const api = {
   },
 
   // --------------------------------------------------------------------------
-  // USER PROFILES & ADMIN MANAGEMENT
+  // REAL-TIME SYNCHRONIZATION (SSE)
   // --------------------------------------------------------------------------
-  async getProfiles(): Promise<Profile[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client.from('profiles').select('*').order('created_at', { ascending: false });
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const localProfiles = localDb.getProfiles();
-          const sbIds = new Set(data.map(p => p.id));
-          const extra = localProfiles.filter(p => !sbIds.has(p.id));
-          return [...(data as Profile[]), ...extra];
-        }
-      } catch (err) {
-        console.warn('Supabase getProfiles error:', err);
-      }
+  subscribeToUpdates(callback: (event: { type: string; data: unknown }) => void): () => void {
+    if (typeof EventSource === 'undefined') {
+      return () => {};
     }
-    return localDb.getProfiles();
-  },
-
-  async updateProfile(id: string, updates: Partial<Profile>): Promise<Profile> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client.from('profiles').update(updates).eq('id', id).select().single();
-        if (error) throw error;
-        return data as Profile;
-      } catch (err) {
-        console.warn('Supabase updateProfile error:', err);
-      }
-    }
-
-    const profiles = localDb.getProfiles();
-    const idx = profiles.findIndex(p => p.id === id);
-    if (idx === -1) throw new Error('Profile not found');
-    const updated = { ...profiles[idx], ...updates, updated_at: new Date().toISOString() };
-    profiles[idx] = updated;
-    localDb.setProfiles(profiles);
-    return updated;
-  },
-
-  async deleteAccount(id: string): Promise<boolean> {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        await client.from('profiles').delete().eq('id', id);
-        // Supabase auth deletion is handled via service-role or cascading triggers
-        return true;
-      } catch (err) {
-        console.warn('Supabase deleteAccount error:', err);
-      }
-    }
-
-    // Delete locally
-    const profiles = localDb.getProfiles().filter(p => p.id !== id);
-    localDb.setProfiles(profiles);
-
-    // Delete their classrooms & students
-    const classrooms = localDb.getClassrooms().filter(c => c.faculty_id === id);
-    for (const c of classrooms) {
-      await this.deleteClassroom(c.id);
-    }
-    return true;
-  },
-
-  async logActivity(userId: string, action: string, description: string): Promise<void> {
     try {
-      const logs = localDb.getLogs();
-      const newLog: ActivityLog = {
-        id: generateUUID(),
-        user_id: userId,
-        action,
-        description,
-        created_at: new Date().toISOString()
+      const eventSource = new EventSource(`${API_BASE}/realtime/updates`);
+      eventSource.onmessage = (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          callback(parsed);
+        } catch {
+          // ignore
+        }
       };
-      localDb.setLogs([newLog, ...logs.slice(0, 99)]);
+      return () => {
+        eventSource.close();
+      };
     } catch {
-      // quiet fail
+      return () => {};
     }
-  },
-
-  async getActivityLogs(): Promise<ActivityLog[]> {
-    return localDb.getLogs();
   }
 };

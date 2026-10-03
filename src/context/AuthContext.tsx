@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Profile, UserRole } from '../types';
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
-import { api, localDb } from '../services/api';
+import { api } from '../services/api';
 
 export interface LoginResult {
   success: boolean;
@@ -38,437 +37,131 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isSupabaseLive, setIsSupabaseLive] = useState<boolean>(isSupabaseConfigured());
+  const [isSupabaseLive] = useState<boolean>(true);
 
   // Initialize session on mount
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
     const initAuth = async () => {
       setLoading(true);
-      const configured = isSupabaseConfigured();
-      setIsSupabaseLive(configured);
-
-      if (configured) {
-        try {
-          const client = getSupabase();
-
-          // 1. Get current Supabase session
-          const { data: { session } } = await client.auth.getSession();
-          if (session?.user) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            
-            // Retrieve profile
-            try {
-              const { data: prof } = await client
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .maybeSingle();
-
-              if (prof) {
-                setProfile(prof as Profile);
-                localStorage.setItem('app_current_user', JSON.stringify(prof));
-              } else {
-                const fallbackProf: Profile = {
-                  id: session.user.id,
-                  full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Faculty Member',
-                  email: session.user.email || '',
-                  role: (session.user.user_metadata?.role as UserRole) || 'faculty',
-                  account_status: 'active',
-                  created_at: new Date().toISOString()
-                };
-                setProfile(fallbackProf);
-                localStorage.setItem('app_current_user', JSON.stringify(fallbackProf));
-              }
-            } catch (pErr) {
-              console.warn('Profile fetch warning in initAuth:', pErr);
+      try {
+        const savedSession = localStorage.getItem('app_session_user');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (parsed && parsed.id) {
+            // Verify profile from database
+            const res = await fetch(`/api/profiles/${encodeURIComponent(parsed.id)}`);
+            if (res.ok) {
+              const liveProfile = await res.json();
+              setUser({ id: liveProfile.id, email: liveProfile.email });
+              setProfile(liveProfile);
+              setLoading(false);
+              return;
             }
           }
-
-          // 2. Set up auth state change listener (catches email confirmations and token refreshes)
-          const { data: authListener } = client.auth.onAuthStateChange(async (event, currentSession) => {
-            if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
-              if (currentSession?.user) {
-                setUser({ id: currentSession.user.id, email: currentSession.user.email || '' });
-                try {
-                  const { data: prof } = await client
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', currentSession.user.id)
-                    .maybeSingle();
-
-                  if (prof) {
-                    setProfile(prof as Profile);
-                    localStorage.setItem('app_current_user', JSON.stringify(prof));
-                  }
-                } catch {
-                  // ignore
-                }
-              }
-            } else if (event === 'SIGNED_OUT') {
-              setUser(null);
-              setProfile(null);
-              localStorage.removeItem('app_current_user');
-            }
-          });
-
-          unsubscribe = () => authListener.subscription.unsubscribe();
-        } catch (e) {
-          console.warn('Supabase auth session check failed, falling back:', e);
         }
+      } catch (e) {
+        console.warn('Failed to restore session from database:', e);
       }
 
-      // If no active session found from Supabase, check local saved session
-      const savedUserStr = localStorage.getItem('app_current_user');
-      if (savedUserStr) {
-        try {
-          const parsed = JSON.parse(savedUserStr);
-          if (!user) {
-            setUser({ id: parsed.id, email: parsed.email });
-            setProfile(parsed);
-          }
-        } catch {
-          // ignore
-        }
-      } else {
-        // Default to demo faculty session for instant seamless usability during initial test run
-        const defaultProfile = localDb.getProfiles().find(p => p.role === 'faculty') || {
-          id: 'faculty-demo-001',
-          full_name: 'Dr. Ramesh Kumar',
-          email: 'ramesh.faculty@university.edu',
-          role: 'faculty' as UserRole,
-          account_status: 'active' as const,
-          created_at: new Date().toISOString()
-        };
-        setUser({ id: defaultProfile.id, email: defaultProfile.email });
-        setProfile(defaultProfile);
-        localStorage.setItem('app_current_user', JSON.stringify(defaultProfile));
+      const isAuthPage = window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/register');
+      if (isAuthPage) {
+        setLoading(false);
+        return;
       }
 
-      setLoading(false);
+      // Default demo faculty session so the app works seamlessly out of the box
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'ramesh.faculty@university.edu', roleHint: 'faculty' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.user);
+          setProfile(data.profile);
+          localStorage.setItem('app_session_user', JSON.stringify(data.user));
+        }
+      } catch (err) {
+        console.warn('Initial auth notice:', err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     initAuth();
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
 
   const login = async (email: string, password = '', roleHint?: UserRole): Promise<LoginResult> => {
     setLoading(true);
-    const configured = isSupabaseConfigured();
     const cleanEmail = email.trim().toLowerCase();
-    const isDemoAccount = cleanEmail === 'ramesh.faculty@university.edu' || cleanEmail === 'admin.portal@university.edu';
 
-    if (configured && password) {
-      try {
-        const client = getSupabase();
-        const signInResult = await client.auth.signInWithPassword({
-          email: cleanEmail,
-          password
-        });
-        const authUser = signInResult.data?.user || null;
-        const authError = signInResult.error;
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password, roleHint })
+      });
 
-        // Specific handling for "Email not confirmed"
-        if (authError) {
-          const errMsg = authError.message.toLowerCase();
-          const errCode = (authError as unknown as { code?: string })?.code;
-
-          if (errMsg.includes('email not confirmed') || errCode === 'email_not_confirmed') {
-            // For standard demo accounts, allow seamless fallback
-            if (isDemoAccount) {
-              const demoProfile = localDb.getProfiles().find(p => p.email.toLowerCase() === cleanEmail);
-              if (demoProfile) {
-                setUser({ id: demoProfile.id, email: demoProfile.email });
-                setProfile(demoProfile);
-                localStorage.setItem('app_current_user', JSON.stringify(demoProfile));
-                setLoading(false);
-                return { success: true, userRole: demoProfile.role };
-              }
-            }
-
-            setLoading(false);
-            return {
-              success: false,
-              error: 'Your email address has not been confirmed yet.',
-              emailNotConfirmed: true
-            };
-          }
-
-          // Specific handling for invalid credentials
-          if (errMsg.includes('invalid login credentials')) {
-            // Check if demo user can be auto-registered in Supabase
-            if (isDemoAccount) {
-              const { data: signUpData, error: signUpErr } = await client.auth.signUp({
-                email: cleanEmail,
-                password,
-                options: {
-                  data: {
-                    full_name: cleanEmail.includes('admin') ? 'Admin Dean Office' : 'Dr. Ramesh Kumar',
-                    role: roleHint || (cleanEmail.includes('admin') ? 'admin' : 'faculty')
-                  }
-                }
-              });
-
-              if (!signUpErr && signUpData.user) {
-                const activeProf: Profile = {
-                  id: signUpData.user.id,
-                  full_name: cleanEmail.includes('admin') ? 'Admin Dean Office' : 'Dr. Ramesh Kumar',
-                  email: cleanEmail,
-                  role: roleHint || (cleanEmail.includes('admin') ? 'admin' : 'faculty'),
-                  account_status: 'active',
-                  created_at: new Date().toISOString()
-                };
-                setUser({ id: activeProf.id, email: activeProf.email });
-                setProfile(activeProf);
-                localStorage.setItem('app_current_user', JSON.stringify(activeProf));
-                setLoading(false);
-                return { success: true, userRole: activeProf.role };
-              }
-            }
-
-            setLoading(false);
-            return { success: false, error: 'Incorrect email or password.' };
-          }
-
-          // User does not exist
-          if (errMsg.includes('user not found') || errMsg.includes('no user')) {
-            setLoading(false);
-            return { success: false, error: 'No account found. Please create an account first.' };
-          }
-
-          // Network or server connectivity issue
-          if (errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('failed to fetch')) {
-            setLoading(false);
-            return { success: false, error: 'Unable to connect to the authentication service. Please try again.' };
-          }
-
-          // Database error / fallback
-          if (!errMsg.includes('database error') && !errMsg.includes('schema')) {
-            setLoading(false);
-            return { success: false, error: 'Incorrect email or password.' };
-          }
-        }
-
-        // If Supabase login succeeded
-        if (!authError && authUser) {
-          setUser({ id: authUser.id, email: authUser.email || cleanEmail });
-          
-          try {
-            const { data: prof } = await client
-              .from('profiles')
-              .select('*')
-              .eq('id', authUser.id)
-              .maybeSingle();
-
-            const targetRole = (prof?.role as UserRole) || (authUser.user_metadata?.role as UserRole) || roleHint || 'faculty';
-            const activeProf: Profile = (prof as Profile) || {
-              id: authUser.id,
-              full_name: authUser.user_metadata?.full_name || cleanEmail.split('@')[0],
-              email: authUser.email || cleanEmail,
-              role: targetRole,
-              account_status: 'active',
-              created_at: new Date().toISOString()
-            };
-
-            setProfile(activeProf);
-            localStorage.setItem('app_current_user', JSON.stringify(activeProf));
-            setLoading(false);
-            return { success: true, userRole: activeProf.role };
-          } catch (profErr) {
-            console.warn('Profile fetch error, using auth metadata:', profErr);
-          }
-        }
-      } catch (err: unknown) {
-        console.warn('Supabase login exception, checking local fallback:', err);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Login failed' }));
+        setLoading(false);
+        return { success: false, error: err.error || 'Login failed' };
       }
-    }
 
-    // Local authentication fallback for instant demo usability
-    const profiles = localDb.getProfiles();
-    const existing = profiles.find(p => p.email.toLowerCase() === cleanEmail);
-
-    if (existing) {
-      setUser({ id: existing.id, email: existing.email });
-      setProfile(existing);
-      localStorage.setItem('app_current_user', JSON.stringify(existing));
+      const data = await res.json();
+      setUser(data.user);
+      setProfile(data.profile);
+      localStorage.setItem('app_session_user', JSON.stringify(data.user));
       setLoading(false);
-      return { success: true, userRole: existing.role };
+      return { success: true, userRole: data.profile.role as UserRole };
+    } catch (err: unknown) {
+      setLoading(false);
+      return { success: false, error: err instanceof Error ? err.message : 'Login failed' };
     }
-
-    // If logging in with demo or any email when unconfigured or after fallback
-    const newProf: Profile = {
-      id: `usr-${Date.now()}`,
-      full_name: cleanEmail.split('@')[0].replace(/[._]/g, ' '),
-      email: cleanEmail,
-      role: roleHint || (cleanEmail.includes('admin') ? 'admin' : 'faculty'),
-      account_status: 'active',
-      created_at: new Date().toISOString()
-    };
-
-    localDb.setProfiles([...profiles, newProf]);
-    setUser({ id: newProf.id, email: newProf.email });
-    setProfile(newProf);
-    localStorage.setItem('app_current_user', JSON.stringify(newProf));
-    setLoading(false);
-    return { success: true, userRole: newProf.role };
   };
 
   const register = async (name: string, email: string, password: string, role: UserRole): Promise<RegisterResult> => {
     setLoading(true);
-    const configured = isSupabaseConfigured();
     const cleanEmail = email.trim().toLowerCase();
 
-    if (configured) {
-      try {
-        const client = getSupabase();
-        const { data, error } = await client.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: {
-              full_name: name.trim(),
-              role
-            },
-            emailRedirectTo: `${window.location.origin}/login?verified=true`
-          }
-        });
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: name.trim(), email: cleanEmail, password, role })
+      });
 
-        if (error) {
-          if (error.message.includes('Database error') || error.message.includes('schema')) {
-            console.warn('Supabase register schema notice, utilizing local profiles:', error.message);
-          } else {
-            setLoading(false);
-            return { success: false, error: error.message };
-          }
-        } else if (data.user) {
-          const newProfile: Profile = {
-            id: data.user.id,
-            full_name: name.trim(),
-            email: cleanEmail,
-            role,
-            account_status: 'active',
-            created_at: new Date().toISOString()
-          };
-
-          // Upsert into public.profiles
-          try {
-            await client.from('profiles').upsert([newProfile]);
-          } catch (e) {
-            console.warn('Profile upsert notice:', e);
-          }
-
-          // If session is null, email confirmation is required by Supabase!
-          const confirmationRequired = !data.session;
-
-          if (!confirmationRequired) {
-            setUser({ id: data.user.id, email: data.user.email || cleanEmail });
-            setProfile(newProfile);
-            localStorage.setItem('app_current_user', JSON.stringify(newProfile));
-          }
-
-          setLoading(false);
-          return { 
-            success: true, 
-            emailConfirmationRequired: confirmationRequired 
-          };
-        }
-      } catch (err: unknown) {
-        console.warn('Supabase register error:', err);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Registration failed' }));
+        setLoading(false);
+        return { success: false, error: err.error || 'Registration failed' };
       }
-    }
 
-    // Local registration
-    const profiles = localDb.getProfiles();
-    if (profiles.some(p => p.email.toLowerCase() === cleanEmail)) {
+      const data = await res.json();
+      setUser(data.user);
+      setProfile(data.profile);
+      localStorage.setItem('app_session_user', JSON.stringify(data.user));
       setLoading(false);
-      return { success: false, error: 'An account with this email already exists.' };
+      return { success: true, emailConfirmationRequired: false };
+    } catch (err: unknown) {
+      setLoading(false);
+      return { success: false, error: err instanceof Error ? err.message : 'Registration failed' };
     }
-
-    const newProfile: Profile = {
-      id: `usr-${Date.now()}`,
-      full_name: name.trim(),
-      email: cleanEmail,
-      role,
-      account_status: 'active',
-      created_at: new Date().toISOString()
-    };
-
-    localDb.setProfiles([newProfile, ...profiles]);
-    setUser({ id: newProfile.id, email: newProfile.email });
-    setProfile(newProfile);
-    localStorage.setItem('app_current_user', JSON.stringify(newProfile));
-    setLoading(false);
-    return { success: true, emailConfirmationRequired: false };
   };
 
-  const resendConfirmationEmail = async (email: string): Promise<{ success: boolean; error?: string }> => {
-    const configured = isSupabaseConfigured();
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (configured) {
-      try {
-        const client = getSupabase();
-        const { error } = await client.auth.resend({
-          type: 'signup',
-          email: cleanEmail,
-          options: {
-            emailRedirectTo: `${window.location.origin}/login?verified=true`
-          }
-        });
-
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        return { success: true };
-      } catch (err: unknown) {
-        return { 
-          success: false, 
-          error: err instanceof Error ? err.message : 'Unable to resend confirmation email.' 
-        };
-      }
-    }
+  const resendConfirmationEmail = async (): Promise<{ success: boolean; error?: string }> => {
     return { success: true };
   };
 
   const devConfirmAndLogin = async (email: string, roleHint: UserRole = 'faculty'): Promise<{ success: boolean; error?: string }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    const profiles = localDb.getProfiles();
-    let match = profiles.find(p => p.email.toLowerCase() === cleanEmail);
-
-    if (!match) {
-      match = {
-        id: `dev-${Date.now()}`,
-        full_name: cleanEmail.split('@')[0].replace(/[._]/g, ' '),
-        email: cleanEmail,
-        role: roleHint,
-        account_status: 'active',
-        created_at: new Date().toISOString()
-      };
-      localDb.setProfiles([match, ...profiles]);
-    }
-
-    setUser({ id: match.id, email: match.email });
-    setProfile(match);
-    localStorage.setItem('app_current_user', JSON.stringify(match));
-    return { success: true };
+    return login(email, 'password123', roleHint);
   };
 
   const logout = async () => {
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabase();
-        await client.auth.signOut();
-      } catch (e) {
-        console.warn('Supabase sign out error:', e);
-      }
-    }
     setUser(null);
     setProfile(null);
-    localStorage.removeItem('app_current_user');
+    localStorage.removeItem('app_session_user');
   };
 
   const updateProfile = async (fullName: string): Promise<boolean> => {
@@ -476,7 +169,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const updated = await api.updateProfile(profile.id, { full_name: fullName });
       setProfile(updated);
-      localStorage.setItem('app_current_user', JSON.stringify(updated));
       return true;
     } catch {
       return false;
@@ -494,20 +186,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchDemoRole = (targetRole: UserRole) => {
-    const profiles = localDb.getProfiles();
-    const match = profiles.find(p => p.role === targetRole) || {
-      id: targetRole === 'admin' ? 'admin-demo-001' : 'faculty-demo-001',
-      full_name: targetRole === 'admin' ? 'Admin Dean Office' : 'Dr. Ramesh Kumar',
-      email: targetRole === 'admin' ? 'admin.portal@university.edu' : 'ramesh.faculty@university.edu',
-      role: targetRole,
-      account_status: 'active' as const,
-      created_at: new Date().toISOString()
-    };
-
-    setUser({ id: match.id, email: match.email });
-    setProfile(match);
-    localStorage.setItem('app_current_user', JSON.stringify(match));
+  const switchDemoRole = async (targetRole: UserRole) => {
+    const targetEmail = targetRole === 'admin' 
+      ? 'admin.portal@university.edu' 
+      : 'ramesh.faculty@university.edu';
+    await login(targetEmail, 'password123', targetRole);
   };
 
   return (
