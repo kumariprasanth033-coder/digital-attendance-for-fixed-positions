@@ -1030,10 +1030,10 @@ app.put('/api/students/:id', (req, res) => {
         updated_at = ?
       WHERE id = ?
     `).run(
-      student_name !== undefined ? String(student_name).trim() : existing.student_name,
+      student_name !== undefined ? String(student_name).trim() : (existing.student_name as string),
       newRoll,
-      branch !== undefined ? String(branch).trim() : existing.branch,
-      gender !== undefined ? gender : existing.gender,
+      branch !== undefined ? String(branch).trim() : (existing.branch as string),
+      gender !== undefined ? String(gender) : (existing.gender as string),
       newRow,
       newCol,
       newPos,
@@ -1136,14 +1136,15 @@ app.post('/api/classrooms/:id/attendance', (req, res) => {
       broadcastUpdate('ATTENDANCE_SUBMITTED', { classroomId, session });
 
       if (supabaseClient) {
-        supabaseClient.from('attendance_sessions').upsert({
-          id: sessionId,
-          classroom_id: classroomId,
-          faculty_id,
-          attendance_date: dateStr,
-          start_time: timeStr,
-          notes: notes || null
-        }).then(async ({ error: sessErr }) => {
+        safeSupabaseSync(async () => {
+          const { error: sessErr } = await supabaseClient!.from('attendance_sessions').upsert({
+            id: sessionId,
+            classroom_id: classroomId,
+            faculty_id,
+            attendance_date: dateStr,
+            start_time: timeStr,
+            notes: notes || null
+          });
           if (sessErr) {
             console.warn('[Supabase Sync session error]:', sessErr.message);
             return;
@@ -1160,7 +1161,7 @@ app.post('/api/classrooms/:id/attendance', (req, res) => {
           });
           const { error: recErr } = await supabaseClient!.from('attendance_records').upsert(recBatch);
           if (recErr) console.warn('[Supabase Sync records error]:', recErr.message);
-        }).catch(e => console.warn('[Supabase Sync attendance exception]:', e));
+        });
       }
 
       res.status(201).json(session);
